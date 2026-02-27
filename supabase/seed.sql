@@ -1,0 +1,3 @@
+-- Seed file for local development
+-- Left intentionally empty: seed data is generated via the UI (devData.ts helpers)
+-- To populate with sample data, use the "Seed sample data" button in the app
