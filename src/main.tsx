@@ -4,13 +4,16 @@ import { RouterProvider } from 'react-router-dom'
 import { router } from '@/app/routes/router'
 import { AppDepsProvider } from '@/app/AppDepsContext'
 import { ThemeProvider } from '@/shared/context/ThemeContext'
+import { GenerationQueueProvider } from '@/shared/context/GenerationQueueContext'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
       <AppDepsProvider>
-        <RouterProvider router={router} />
+        <GenerationQueueProvider>
+          <RouterProvider router={router} />
+        </GenerationQueueProvider>
       </AppDepsProvider>
     </ThemeProvider>
   </StrictMode>

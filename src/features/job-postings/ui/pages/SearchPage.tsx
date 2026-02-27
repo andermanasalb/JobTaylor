@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ArrowUpDown, Search as SearchIcon, X } from 'lucide-react'
 import { useAppDeps } from '@/app/AppDepsContext'
-import { useLocation } from 'react-router-dom'
-import { mockListings } from '../mock/searchMock'
-import type { SearchListing, Region, Seniority } from '../types/SearchListing'
+import { useLocation, useNavigate } from 'react-router-dom'
+import type { SearchListing, WorkMode } from '../types/SearchListing'
+import type { BaseCv } from '@/features/cv-base/domain/BaseCv'
 import { FilterBar } from '../components/FilterBar'
 import { JobCard } from '../components/JobCard'
 import { JobDetailPanel } from '../components/JobDetailPanel'
@@ -24,38 +24,173 @@ import { updateHistoryStatus } from '@/features/history/application/usecases/Upd
 import { createHistoryEntry } from '@/features/history/domain/HistoryEntry'
 import type { HistoryStatus } from '@/features/history/domain/HistoryEntry'
 import { listBaseCvs } from '@/features/cv-base/application/usecases/ListBaseCvs'
-import type { TailoredCv } from '@/features/tailoring/domain/TailoredCv'
 import { exportTailoredCv } from '@/infra/export/exportTailoredCv'
 import { useSettings } from '@/features/settings/ui/hooks/useSettings'
 import { usePhoto } from '@/features/settings/ui/hooks/usePhoto'
-import { searchListingToJobPosting } from '../utils/searchListingAdapter'
+import { useGenerationQueue } from '@/shared/context/GenerationQueueContext'
 
 type SortField = 'date' | 'score'
 
+const DEBOUNCE_MS = 600
+const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
+
 export function SearchPage() {
-  const { historyRepository, cvRepository, aiClient, tailoredCvRepository } = useAppDeps()
+  const { historyRepository, cvRepository, aiClient, tailoredCvRepository, jobFeedPort } = useAppDeps()
   const settings = useSettings()
   const photo = usePhoto()
   const location = useLocation()
+  const navigate = useNavigate()
+  const generationQueue = useGenerationQueue()
 
-  const [query, setQuery] = useState('')
-  const [selectedRegions, setSelectedRegions] = useState<Region[]>([])
-  const [remoteOnly, setRemoteOnly] = useState(false)
-  const [seniority, setSeniority] = useState<Seniority | 'all'>('all')
-  const [sortBy, setSortBy] = useState<SortField>('score')
-  const [selectedJob, setSelectedJob] = useState<SearchListing | null>(null)
+  // ── Estado persistido en sessionStorage (sobrevive navegación entre páginas) ──
+  const [query, setQuery] = useState<string>(() => sessionStorage.getItem('search.query') ?? '')
+  const [selectedLocations, setSelectedLocations] = useState<string[]>(() => {
+    try { return JSON.parse(sessionStorage.getItem('search.locations') ?? '[]') } catch { return [] }
+  })
+  const [workMode, setWorkMode] = useState<WorkMode | 'all'>(() =>
+    (sessionStorage.getItem('search.workMode') as WorkMode | 'all') ?? 'all'
+  )
+  const [remoteOnly, setRemoteOnly] = useState<boolean>(() =>
+    sessionStorage.getItem('search.remoteOnly') === 'true'
+  )
+  const [sortBy, setSortBy] = useState<SortField>(() =>
+    (sessionStorage.getItem('search.sortBy') as SortField) ?? 'score'
+  )
+  const [selectedJob, setSelectedJob] = useState<SearchListing | null>(() => {
+    try { const s = sessionStorage.getItem('search.selectedJob'); return s ? JSON.parse(s) : null } catch { return null }
+  })
   const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set())
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => {
+    // Si hay resultados cacheados, arrancamos sin skeleton mientras se refresca en background
+    try { const s = sessionStorage.getItem('search.listings'); return !s || JSON.parse(s).length === 0 } catch { return true }
+  })
+  const [allListings, setAllListings] = useState<SearchListing[]>(() => {
+    try { const s = sessionStorage.getItem('search.listings'); return s ? JSON.parse(s) : [] } catch { return [] }
+  })
+  const [feedError, setFeedError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  // Inline generation state
+  // CV Base — solo ref, no necesitamos re-render
+  const baseCvRef = useRef<BaseCv | null>(null)
+
+  // Estado del historial y exportación
   const [historyStatuses, setHistoryStatuses] = useState<Map<string, HistoryStatus>>(new Map())
-  const [generatingJobId, setGeneratingJobId] = useState<string | null>(null)
-  const [tailoredCvs, setTailoredCvs] = useState<Map<string, TailoredCv>>(new Map())
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
 
-  // Init: simulate data fetch + load saved-job IDs, statuses and cached tailored CVs
+  // Scores calculados por Ollama (por jobId) — se calculan al hacer click
+  const [jobScores, setJobScores] = useState<Map<string, number>>(new Map())
+  const [scoringJobId, setScoringJobId] = useState<string | null>(null)
+
+  // Stable ref to settings.aiMode to avoid stale closures
+  const aiModeRef = useRef(settings.aiMode)
+  useEffect(() => { aiModeRef.current = settings.aiMode }, [settings.aiMode])
+
+  // jobId pendiente de seleccionar desde History (se resuelve cuando allListings carga)
+  const pendingJobIdRef = useRef<string | null>(null)
+
+  // Ref para el contenedor scrollable de la lista de jobs
+  const listScrollRef = useRef<HTMLDivElement>(null)
+
+  // Guardar posición de scroll al hacer scroll
+  function handleListScroll() {
+    if (listScrollRef.current) {
+      sessionStorage.setItem('search.scrollTop', String(listScrollRef.current.scrollTop))
+    }
+  }
+
+  // Restaurar posición de scroll cuando los resultados cargan
   useEffect(() => {
-    const dataTimer = setTimeout(() => setIsLoading(false), 600)
+    if (isLoading || !listScrollRef.current) return
+    const saved = parseInt(sessionStorage.getItem('search.scrollTop') ?? '0', 10)
+    if (saved > 0) {
+      // Pequeño delay para que el DOM termine de renderizar los cards
+      const t = setTimeout(() => {
+        listScrollRef.current?.scrollTo({ top: saved, behavior: 'instant' })
+      }, 50)
+      return () => clearTimeout(t)
+    }
+  }, [isLoading])
+
+  // Persistir todo el estado de búsqueda en sessionStorage
+  useEffect(() => { sessionStorage.setItem('search.query', query) }, [query])
+  useEffect(() => { sessionStorage.setItem('search.locations', JSON.stringify(selectedLocations)) }, [selectedLocations])
+  useEffect(() => { sessionStorage.setItem('search.workMode', workMode) }, [workMode])
+  useEffect(() => { sessionStorage.setItem('search.remoteOnly', String(remoteOnly)) }, [remoteOnly])
+  useEffect(() => { sessionStorage.setItem('search.sortBy', sortBy) }, [sortBy])
+  useEffect(() => {
+    if (selectedJob) sessionStorage.setItem('search.selectedJob', JSON.stringify(selectedJob))
+    else sessionStorage.removeItem('search.selectedJob')
+  }, [selectedJob])
+  useEffect(() => {
+    if (allListings.length > 0) sessionStorage.setItem('search.listings', JSON.stringify(allListings))
+  }, [allListings])
+
+  // Core fetch — page=1 replaces list, page>1 appends
+  const fetchListings = useCallback(async (keywords?: string, page = 1) => {
+    if (page === 1) {
+      setIsLoading(true)
+      setFeedError(null)
+      setJobScores(new Map())
+    } else {
+      setIsLoadingMore(true)
+    }
+    try {
+      const results = await jobFeedPort.search({
+        keywords: keywords?.trim() || undefined,
+        page,
+      })
+      if (page === 1) {
+        setAllListings(results)
+      } else {
+        setAllListings(prev => [...prev, ...results])
+      }
+      setHasMore(results.length >= 20)
+      setCurrentPage(page)
+    } catch (err) {
+      console.error('Job feed error:', err)
+      if (page === 1) {
+        setFeedError('No se pudieron cargar las ofertas. Comprueba tu conexión o las credenciales de Adzuna.')
+        setAllListings([])
+      }
+    } finally {
+      if (page === 1) setIsLoading(false)
+      else setIsLoadingMore(false)
+    }
+  }, [jobFeedPort])
+
+  // Debounced search — resets to page 1
+  function handleQueryChange(value: string) {
+    setQuery(value)
+    setCurrentPage(1)
+    setHasMore(true)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      fetchListings(value, 1)
+    }, DEBOUNCE_MS)
+  }
+
+  function handleSearch() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setCurrentPage(1)
+    setHasMore(true)
+    fetchListings(query, 1)
+  }
+
+  // Init
+  useEffect(() => {
+    // Cargar CV base (necesario para scoring on-demand)
+    listBaseCvs(cvRepository).then(cvs => {
+      if (cvs.length > 0) baseCvRef.current = cvs[0]
+    }).catch(console.error)
+
+    // Restaurar búsqueda guardada — si ya hay resultados en caché los mostramos
+    // y relanzamos la búsqueda en background para refrescar
+    const savedQuery = sessionStorage.getItem('search.query') ?? ''
+    fetchListings(savedQuery || undefined, 1)
 
     listHistoryEntries(historyRepository)
       .then(entries => {
@@ -67,143 +202,165 @@ export function SearchPage() {
       })
       .catch(console.error)
 
-    // Pre-load any previously generated CVs from the repo
-    tailoredCvRepository.findAll()
-      .then(all => {
-        const map = new Map<string, TailoredCv>()
-        for (const cv of all) map.set(cv.jobPostingId, cv)
-        setTailoredCvs(map)
-      })
-      .catch(console.error)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyRepository])
 
-    return () => clearTimeout(dataTimer)
-  }, [historyRepository, tailoredCvRepository])
-
-  // Pre-select a job when navigating from History (location state { jobId })
+  // Pre-select a job when navigating from History
   useEffect(() => {
     const jobId = (location.state as { jobId?: string } | null)?.jobId
     if (!jobId) return
-    const match = mockListings.find(j => j.id === jobId)
-    if (match) setSelectedJob(match)
+
+    // Limpiar el state para que no interfiera con futuras navegaciones
+    navigate('/search', { replace: true, state: null })
+
+    // Si ya está en la lista actual, lo abrimos directamente
+    const match = allListings.find(j => j.id === jobId)
+    if (match) {
+      setSelectedJob(match)
+      return
+    }
+
+    // Si no está, guardamos el jobId y limpiamos la búsqueda para recargar todos los resultados
+    pendingJobIdRef.current = jobId
+    setQuery('')
+    sessionStorage.setItem('search.query', '')
+    fetchListings(undefined, 1)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
-  const filteredJobs = useMemo(() => {
-    let results = [...mockListings]
-    if (query) {
-      const q = query.toLowerCase()
-      results = results.filter(
-        j =>
-          j.title.toLowerCase().includes(q) ||
-          j.company.toLowerCase().includes(q) ||
-          j.tags.some(t => t.toLowerCase().includes(q)),
-      )
+  // Cuando allListings cambia, intentamos resolver el jobId pendiente
+  useEffect(() => {
+    if (!pendingJobIdRef.current || allListings.length === 0) return
+    const match = allListings.find(j => j.id === pendingJobIdRef.current)
+    if (match) {
+      setSelectedJob(match)
+      pendingJobIdRef.current = null
     }
-    if (selectedRegions.length > 0) {
-      results = results.filter(j => selectedRegions.includes(j.region))
+  }, [allListings])
+
+  // IntersectionObserver — carga la siguiente página cuando el sentinel es visible
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoading && !isLoadingMore && hasMore) {
+          fetchListings(query, currentPage + 1)
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [isLoading, isLoadingMore, hasMore, currentPage, query, fetchListings])
+
+  // Ubicaciones únicas derivadas de los resultados actuales (ordenadas alfabéticamente)
+  const availableLocations = useMemo(() => {
+    const locs = new Set(allListings.map(j => j.location).filter(Boolean))
+    return Array.from(locs).sort()
+  }, [allListings])
+
+  // Limpiar selectedLocations que ya no estén en los resultados al cambiar búsqueda
+  useEffect(() => {
+    if (availableLocations.length === 0) return
+    setSelectedLocations(prev => prev.filter(l => availableLocations.includes(l)))
+  }, [availableLocations])
+
+  // Filtros + ordenación
+  const filteredJobs = useMemo(() => {
+    let results = [...allListings]
+    if (selectedLocations.length > 0) {
+      results = results.filter(j => selectedLocations.includes(j.location))
+    }
+    if (workMode !== 'all') {
+      results = results.filter(j => j.workMode === workMode)
     }
     if (remoteOnly) {
       results = results.filter(j => j.workMode === 'Remote')
     }
-    if (seniority !== 'all') {
-      results = results.filter(j => j.seniority === seniority)
-    }
     results.sort((a, b) => {
-      if (sortBy === 'score') return b.matchScore - a.matchScore
+      if (sortBy === 'score') {
+        const scoreA = jobScores.get(a.id) ?? a.matchScore
+        const scoreB = jobScores.get(b.id) ?? b.matchScore
+        return scoreB - scoreA
+      }
       return new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime()
     })
     return results
-  }, [query, selectedRegions, remoteOnly, seniority, sortBy])
+  }, [selectedLocations, workMode, remoteOnly, sortBy, allListings, jobScores])
+
+  // Seleccionar job: lanza scoring on-demand con caché
+  function handleSelectJob(job: SearchListing) {
+    setSelectedJob(job)
+
+    if (aiModeRef.current !== 'local') return
+    if (jobScores.has(job.id)) return
+    if (!baseCvRef.current || !job.description) return
+
+    const cv = baseCvRef.current
+    setScoringJobId(job.id)
+    fetch(`${PROXY_URL}/score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cv, jobTitle: job.title, jobDescription: job.description }),
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(data => {
+        if (typeof data.score === 'number') {
+          setJobScores(prev => new Map(prev).set(job.id, data.score))
+        }
+      })
+      .catch(err => console.warn('Score failed for', job.id, err))
+      .finally(() => setScoringJobId(null))
+  }
 
   function handleSave(job: SearchListing) {
     const isSaved = savedJobs.has(job.id)
-
     if (isSaved) {
-      // Optimistic UI update
-      setSavedJobs(prev => {
-        const next = new Set(prev)
-        next.delete(job.id)
-        return next
-      })
-      setHistoryStatuses(prev => {
-        const next = new Map(prev)
-        next.delete(job.id)
-        return next
-      })
-      // Remove from history (only if status is 'saved'; use case handles guard)
+      setSavedJobs(prev => { const n = new Set(prev); n.delete(job.id); return n })
+      setHistoryStatuses(prev => { const n = new Map(prev); n.delete(job.id); return n })
       removeHistoryEntry(historyRepository, job.id).catch(console.error)
     } else {
-      // Optimistic UI update
       setSavedJobs(prev => new Set(prev).add(job.id))
       setHistoryStatuses(prev => new Map(prev).set(job.id, 'saved'))
-      // Persist to history repo
       const entry = createHistoryEntry({
         jobId: job.id,
         jobTitle: job.title,
         company: job.company,
-        region: job.region,
+        region: job.location,
       })
       addHistoryEntry(historyRepository, entry).catch(console.error)
     }
   }
 
-  async function handleGenerate(job: SearchListing) {
-    if (generatingJobId) return
-    setGeneratingJobId(job.id)
-    try {
-      const cvs = await listBaseCvs(cvRepository)
-      if (cvs.length === 0) {
-        console.warn('No base CV found — create one in CV Base first')
-        return
-      }
-      const baseCv = cvs[0]
-      const jobPosting = searchListingToJobPosting(job)
-      const { tailoredData, gaps, suggestions } = await aiClient.tailorCv(baseCv, jobPosting)
-
-      const tailored: TailoredCv = {
-        id: crypto.randomUUID(),
-        baseCvId: baseCv.id,
-        jobPostingId: job.id,
-        tailoredData,
-        gaps,
-        suggestions,
-        guardrailsApplied: true,
-        createdAt: new Date(),
-      }
-
-      setTailoredCvs(prev => new Map(prev).set(job.id, tailored))
-      setHistoryStatuses(prev => new Map(prev).set(job.id, 'generated'))
-
-      // Persist history first (uses LocalStorageHistoryRepository — always succeeds)
-      if (!savedJobs.has(job.id)) {
-        const entry = createHistoryEntry({
-          jobId: job.id,
-          jobTitle: job.title,
-          company: job.company,
-          region: job.region,
-          status: 'generated',
-        })
-        await addHistoryEntry(historyRepository, entry)
-        setSavedJobs(prev => new Set(prev).add(job.id))
-      } else {
-        await updateHistoryStatus(historyRepository, job.id, 'generated')
-      }
-
-      // Best-effort: persist the tailored CV so HistoryPage can download without re-generating.
-      // Uses SupabaseTailoredCvRepository in Supabase mode — may throw for non-UUID jobIds.
-      try {
-        await tailoredCvRepository.save(tailored)
-      } catch {
-        // Non-critical — history entry already saved; export will re-generate on-the-fly if needed
-      }
-    } catch (err) {
-      console.error('Generation failed:', err)
-    } finally {
-      setGeneratingJobId(null)
+  function handleGenerate(job: SearchListing) {
+    generationQueue.enqueue(job, {
+      cvRepository,
+      tailoredCvRepository,
+      historyRepository,
+      aiClient,
+      aiMode: settings.aiMode,
+      strictness: settings.strictness,
+    })
+    // Marcar como guardada en historial si no lo está ya
+    if (!savedJobs.has(job.id)) {
+      setSavedJobs(prev => new Set(prev).add(job.id))
+      setHistoryStatuses(prev => new Map(prev).set(job.id, 'saved'))
+      addHistoryEntry(historyRepository, createHistoryEntry({
+        jobId: job.id,
+        jobTitle: job.title,
+        company: job.company,
+        region: job.location,
+      })).catch(console.error)
     }
   }
 
   async function handleExport(job: SearchListing) {
-    const tailored = tailoredCvs.get(job.id)
+    const queueEntry = generationQueue.jobs.get(job.id)
+    const tailored = queueEntry?.tailoredCv
     if (!tailored || exportingJobId) return
     setExportingJobId(job.id)
     try {
@@ -221,34 +378,52 @@ export function SearchPage() {
     }
   }
 
+  // Sincronizar historyStatuses cuando la cola completa un job
+  useEffect(() => {
+    generationQueue.jobs.forEach((entry, jobId) => {
+      if (entry.status === 'done') {
+        setHistoryStatuses(prev => {
+          if (prev.get(jobId) === 'generated' || prev.get(jobId) === 'exported') return prev
+          const next = new Map(prev)
+          next.set(jobId, 'generated')
+          return next
+        })
+        setSavedJobs(prev => new Set(prev).add(jobId))
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generationQueue.jobs])
+
   function clearFilters() {
     setQuery('')
-    setSelectedRegions([])
+    setSelectedLocations([])
+    setWorkMode('all')
     setRemoteOnly(false)
-    setSeniority('all')
   }
 
   return (
     <div className="flex h-full flex-col lg:flex-row">
-      {/* ── Left panel: filters + results ── */}
+      {/* ── Left panel ── */}
       <div className="flex flex-col lg:w-[440px] xl:w-[480px] lg:border-r border-border lg:shrink-0">
         <div className="border-b border-border p-4">
           <FilterBar
             query={query}
-            onQueryChange={setQuery}
-            selectedRegions={selectedRegions}
-            onRegionsChange={setSelectedRegions}
+            onQueryChange={handleQueryChange}
+            availableLocations={availableLocations}
+            selectedLocations={selectedLocations}
+            onLocationsChange={setSelectedLocations}
+            workMode={workMode}
+            onWorkModeChange={setWorkMode}
             remoteOnly={remoteOnly}
             onRemoteOnlyChange={setRemoteOnly}
-            seniority={seniority}
-            onSeniorityChange={setSeniority}
             onClear={clearFilters}
+            onSearch={handleSearch}
           />
         </div>
 
         <div className="flex items-center justify-between border-b border-border px-4 py-2">
           <span className="text-xs text-muted-foreground">
-            {isLoading ? 'Loading…' : `${filteredJobs.length} results`}
+            {isLoading ? 'Cargando…' : feedError ? 'Error' : `${filteredJobs.length} resultados`}
           </span>
           <div className="flex items-center gap-1.5">
             <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
@@ -257,24 +432,34 @@ export function SearchPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="score">Match score</SelectItem>
-                <SelectItem value="date">Date posted</SelectItem>
+                <SelectItem value="score">Puntuacion</SelectItem>
+                <SelectItem value="date">Fecha</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div ref={listScrollRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto p-3">
           {isLoading ? (
             <SkeletonList count={6} />
+          ) : feedError ? (
+            <EmptyState
+              icon={SearchIcon}
+              title="Error al cargar ofertas"
+              description={feedError}
+            >
+              <Button variant="outline" size="sm" onClick={() => fetchListings(query, 1)}>
+                Reintentar
+              </Button>
+            </EmptyState>
           ) : filteredJobs.length === 0 ? (
             <EmptyState
               icon={SearchIcon}
-              title="No jobs found"
-              description="Try adjusting your filters or search query to find more results."
+              title="Sin resultados"
+              description="Prueba a ajustar los filtros o la busqueda."
             >
               <Button variant="outline" size="sm" onClick={clearFilters}>
-                Clear filters
+                Limpiar filtros
               </Button>
             </EmptyState>
           ) : (
@@ -285,24 +470,39 @@ export function SearchPage() {
                   job={job}
                   isSelected={selectedJob?.id === job.id}
                   isSaved={savedJobs.has(job.id)}
-                  onSelect={setSelectedJob}
+                  score={jobScores.get(job.id) ?? null}
+                  onSelect={handleSelectJob}
                   onSave={handleSave}
                 />
               ))}
+              {/* Sentinel para infinite scroll */}
+              <div ref={sentinelRef} className="h-4" />
+              {isLoadingMore && (
+                <div className="flex justify-center py-3">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              )}
+              {!hasMore && allListings.length > 0 && (
+                <p className="py-3 text-center text-xs text-muted-foreground">
+                  No hay mas resultados
+                </p>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Right panel: job detail (desktop) ── */}
+      {/* ── Right panel (desktop) ── */}
       <div className="hidden lg:flex flex-1 flex-col bg-card">
         <JobDetailPanel
           job={selectedJob}
           isSaved={selectedJob ? savedJobs.has(selectedJob.id) : false}
           historyStatus={selectedJob ? (historyStatuses.get(selectedJob.id) ?? null) : null}
-          tailoredCv={selectedJob ? (tailoredCvs.get(selectedJob.id) ?? null) : null}
-          isGenerating={selectedJob?.id === generatingJobId}
+          tailoredCv={selectedJob ? (generationQueue.jobs.get(selectedJob.id)?.tailoredCv ?? null) : null}
+          generationStatus={selectedJob ? (generationQueue.jobs.get(selectedJob.id)?.status ?? null) : null}
           isExporting={selectedJob?.id === exportingJobId}
+          isScoring={selectedJob?.id === scoringJobId}
+          score={selectedJob ? (jobScores.get(selectedJob.id) ?? null) : null}
           exportFormat={settings.exportFormat}
           onSave={handleSave}
           onGenerate={handleGenerate}
@@ -310,7 +510,7 @@ export function SearchPage() {
         />
       </div>
 
-      {/* ── Mobile: bottom sheet ── */}
+      {/* ── Mobile bottom sheet ── */}
       {selectedJob && (
         <div className="lg:hidden fixed inset-0 z-40">
           <div
@@ -327,7 +527,7 @@ export function SearchPage() {
                 onClick={() => setSelectedJob(null)}
               >
                 <X className="h-3.5 w-3.5" />
-                Close
+                Cerrar
               </Button>
             </div>
             <div className="h-full overflow-y-auto pb-20">
@@ -335,9 +535,11 @@ export function SearchPage() {
                 job={selectedJob}
                 isSaved={savedJobs.has(selectedJob.id)}
                 historyStatus={historyStatuses.get(selectedJob.id) ?? null}
-                tailoredCv={tailoredCvs.get(selectedJob.id) ?? null}
-                isGenerating={selectedJob.id === generatingJobId}
+                tailoredCv={generationQueue.jobs.get(selectedJob.id)?.tailoredCv ?? null}
+                generationStatus={generationQueue.jobs.get(selectedJob.id)?.status ?? null}
                 isExporting={selectedJob.id === exportingJobId}
+                isScoring={selectedJob.id === scoringJobId}
+                score={jobScores.get(selectedJob.id) ?? null}
                 exportFormat={settings.exportFormat}
                 onSave={handleSave}
                 onGenerate={handleGenerate}

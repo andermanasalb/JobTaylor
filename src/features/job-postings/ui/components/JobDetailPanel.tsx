@@ -10,6 +10,7 @@ import {
   Download,
   Loader2,
   RefreshCw,
+  Clock,
 } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
@@ -19,14 +20,18 @@ import type { SearchListing } from '../types/SearchListing'
 import type { HistoryStatus } from '@/features/history/domain/HistoryEntry'
 import type { TailoredCv } from '@/features/tailoring/domain/TailoredCv'
 import type { ExportFormat } from '@/features/settings/domain/AppSettings'
+import type { GenerationStatus } from '@/shared/context/GenerationQueueContext'
 
 interface JobDetailPanelProps {
   job: SearchListing | null
   isSaved?: boolean
   historyStatus: HistoryStatus | null
   tailoredCv: TailoredCv | null
-  isGenerating: boolean
+  /** Estado de la cola de generación para este job */
+  generationStatus: GenerationStatus | null
   isExporting: boolean
+  isScoring: boolean
+  score: number | null
   exportFormat: ExportFormat
   onSave?: (job: SearchListing) => void
   onGenerate: (job: SearchListing) => void
@@ -35,12 +40,12 @@ interface JobDetailPanelProps {
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return d.toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function scoreColor(score: number) {
-  if (score >= 85) return 'bg-green-500/15 text-green-700 dark:text-green-400'
-  if (score >= 70) return 'bg-primary/15 text-primary'
+  if (score >= 75) return 'bg-green-500/15 text-green-700 dark:text-green-400'
+  if (score >= 50) return 'bg-primary/15 text-primary'
   return 'bg-muted text-muted-foreground'
 }
 
@@ -49,8 +54,10 @@ export function JobDetailPanel({
   isSaved,
   historyStatus,
   tailoredCv,
-  isGenerating,
+  generationStatus,
   isExporting,
+  isScoring,
+  score,
   exportFormat,
   onSave,
   onGenerate,
@@ -63,20 +70,25 @@ export function JobDetailPanel({
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted mx-auto mb-3">
             <ExternalLink className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">Select a job posting</p>
+          <p className="text-sm font-medium text-foreground">Selecciona una oferta</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Click on a result to preview details here
+            Haz click en un resultado para ver los detalles aquí
           </p>
         </div>
       </div>
     )
   }
 
-  // Determine generate button label and state
   const hasGenerated = !!tailoredCv
   const canExport = hasGenerated
-  const generateLabel = hasGenerated ? 'Regenerate CV' : 'Generate tailored CV'
+  const isGenerating = generationStatus === 'generating'
+  const isPending = generationStatus === 'pending'
+  const isQueued = isGenerating || isPending
+  const generateLabel = hasGenerated ? 'Regenerar CV' : 'Generar CV adaptado'
   const GenerateIcon = hasGenerated ? RefreshCw : Scissors
+
+  // Score a mostrar: Ollama si está disponible, sino matchScore de Adzuna
+  const displayScore = score ?? job.matchScore
 
   return (
     <div className="flex flex-col h-full">
@@ -92,14 +104,23 @@ export function JobDetailPanel({
               <span>{job.company}</span>
             </div>
           </div>
-          <span
-            className={cn(
-              'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
-              scoreColor(job.matchScore),
-            )}
-          >
-            {job.matchScore}% match
-          </span>
+
+          {/* Score badge */}
+          {isScoring ? (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-muted text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Calculando…
+            </span>
+          ) : (
+            <span
+              className={cn(
+                'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
+                scoreColor(displayScore),
+              )}
+            >
+              {displayScore}% match
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
@@ -115,6 +136,17 @@ export function JobDetailPanel({
             <Globe className="h-3 w-3" />
             {job.source}
           </span>
+          {job.url && (
+            <a
+              href={job.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Ver oferta
+            </a>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -138,24 +170,28 @@ export function JobDetailPanel({
                   : 'bg-primary/10 text-primary',
               )}
             >
-              {historyStatus === 'generated' ? 'CV generated' : 'CV exported'}
+              {historyStatus === 'generated' ? 'CV generado' : 'CV exportado'}
             </span>
           </div>
         )}
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 mt-4">
-          {/* Generate / Regenerate */}
           <Button
             size="sm"
             className="h-8 text-xs"
             onClick={() => onGenerate(job)}
-            disabled={isGenerating || isExporting}
+            disabled={isQueued || isExporting}
           >
             {isGenerating ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Generating…
+                Generando…
+              </>
+            ) : isPending ? (
+              <>
+                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                En cola…
               </>
             ) : (
               <>
@@ -165,30 +201,28 @@ export function JobDetailPanel({
             )}
           </Button>
 
-          {/* Export — only shown when a tailored CV exists */}
           {canExport && (
             <Button
               variant="outline"
               size="sm"
               className="h-8 text-xs"
               onClick={() => onExport(job)}
-              disabled={isExporting || isGenerating}
+              disabled={isExporting || isQueued}
             >
               {isExporting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  Exporting…
+                  Exportando…
                 </>
               ) : (
                 <>
                   <Download className="h-3.5 w-3.5 mr-1.5" />
-                  Export {exportFormat.toUpperCase()}
+                  Exportar {exportFormat.toUpperCase()}
                 </>
               )}
             </Button>
           )}
 
-          {/* Bookmark */}
           <Button
             variant="outline"
             size="sm"
@@ -198,7 +232,7 @@ export function JobDetailPanel({
             <Bookmark
               className={cn('h-3.5 w-3.5 mr-1.5', isSaved && 'fill-primary text-primary')}
             />
-            {isSaved ? 'Saved' : 'Save'}
+            {isSaved ? 'Guardada' : 'Guardar'}
           </Button>
         </div>
       </div>
@@ -207,61 +241,34 @@ export function JobDetailPanel({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+        {/* Descripción de la oferta (directamente de Adzuna) */}
         {job.description ? (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Description
+              Descripción
             </h3>
-            <p className="text-sm text-foreground leading-relaxed">{job.description}</p>
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
+              {job.description}
+            </p>
           </section>
         ) : (
           <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
             <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-foreground">No description available</p>
+              <p className="text-sm font-medium text-foreground">Sin descripción disponible</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                You can paste the job description manually when tailoring your CV.
+                Abre la oferta original para ver el detalle completo.
               </p>
             </div>
           </div>
         )}
 
-        {job.requirements.length > 0 && (
-          <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Requirements
-            </h3>
-            <ul className="space-y-1.5">
-              {job.requirements.map((req, i) => (
-                <li key={i} className="text-sm text-foreground leading-relaxed flex items-start gap-2">
-                  <span className="shrink-0 mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/60" />
-                  {req}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {job.niceToHave.length > 0 && (
-          <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Nice to have
-            </h3>
-            <ul className="space-y-1.5">
-              {job.niceToHave.map((item, i) => (
-                <li key={i} className="text-sm text-muted-foreground leading-relaxed flex items-start gap-2">
-                  <span className="shrink-0 mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
+        {/* Tags de tecnologías detectados */}
         {job.techStack.length > 0 && (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Tech stack
+              Tecnologías detectadas
             </h3>
             <div className="flex flex-wrap gap-1.5">
               {job.techStack.map(tech => (
@@ -271,26 +278,33 @@ export function JobDetailPanel({
           </section>
         )}
 
-        {job.notes && (
-          <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Notes
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed italic">{job.notes}</p>
-          </section>
-        )}
-
-        {/* Gaps / suggestions from generated CV */}
+        {/* Gaps / sugerencias del CV generado */}
         {tailoredCv && tailoredCv.gaps.length > 0 && (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Skill gaps identified
+              Brechas detectadas
             </h3>
             <ul className="space-y-1.5">
               {tailoredCv.gaps.map((gap, i) => (
                 <li key={i} className="text-sm text-amber-700 dark:text-amber-400 leading-relaxed flex items-start gap-2">
                   <span className="shrink-0 mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500/60" />
                   {gap}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {tailoredCv && tailoredCv.suggestions.length > 0 && (
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Sugerencias
+            </h3>
+            <ul className="space-y-1.5">
+              {tailoredCv.suggestions.map((s, i) => (
+                <li key={i} className="text-sm text-muted-foreground leading-relaxed flex items-start gap-2">
+                  <span className="shrink-0 mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                  {s}
                 </li>
               ))}
             </ul>

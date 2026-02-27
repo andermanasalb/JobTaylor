@@ -25,7 +25,50 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { Separator } from '@/shared/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs'
 import { Label } from '@/shared/components/ui/label'
-import { parseTextCv } from '@/infra/cv-parser/parseTextCv'
+// ---------------------------------------------------------------------------
+// Text extraction helpers (PDF via pdfjs-dist, DOCX via mammoth)
+// ---------------------------------------------------------------------------
+
+async function extractTextFromPdf(file: File): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist')
+  // Use the bundled worker from pdfjs-dist
+  const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.mjs?url')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const pages: string[] = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const pageText = content.items
+      .map(item => ('str' in item ? item.str : ''))
+      .join(' ')
+    pages.push(pageText)
+  }
+  return pages.join('\n')
+}
+
+async function extractTextFromDocx(file: File): Promise<string> {
+  const mammoth = await import('mammoth')
+  const arrayBuffer = await file.arrayBuffer()
+  const result = await mammoth.extractRawText({ arrayBuffer })
+  return result.value
+}
+
+async function extractText(file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if (ext === 'pdf') return extractTextFromPdf(file)
+  if (ext === 'docx') return extractTextFromDocx(file)
+  // Plain text fallback
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => resolve((e.target?.result as string) ?? '')
+    reader.onerror = reject
+    reader.readAsText(file)
+  })
+}
+
+const PROXY_URL = import.meta.env.VITE_PROXY_URL ?? 'http://localhost:3001'
 
 // ---------------------------------------------------------------------------
 // Form-friendly intermediate types (strings everywhere for controlled inputs)
@@ -349,14 +392,10 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
   function handleFileSelect(file: File) {
     setUploadedFile(file)
     setParseError(null)
-    // For plain text files, also populate the paste area so parse can use it later
-    if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-      const reader = new FileReader()
-      reader.onload = e => {
-        setUploadText((e.target?.result as string) ?? '')
-      }
-      reader.readAsText(file)
-    }
+    // Eagerly extract text from all supported formats so the paste area mirrors the content
+    extractText(file)
+      .then(text => setUploadText(text))
+      .catch(() => { /* user can still paste manually */ })
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -367,41 +406,95 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
   }
 
   async function handleParse() {
-    if (!uploadText.trim()) {
-      setParseError('Paste some CV text before parsing.')
+    const text = uploadText.trim()
+    if (!text) {
+      setParseError('Pega o sube el texto de tu CV antes de parsear.')
       return
     }
     setParsing(true)
     setParseError(null)
     try {
-      const parsed = parseTextCv(uploadText)
-      setForm(prev => ({
-        ...prev,
-        fullName: parsed.fullName || prev.fullName,
-        email: parsed.email || prev.email,
-        phone: parsed.phone || prev.phone,
-        location: parsed.location || prev.location,
-        title: parsed.title || prev.title,
-        summary: parsed.summary || prev.summary,
-        experience: parsed.experienceText
-          ? [{ id: uid(), title: '', company: '', location: '', startDate: '', endDate: '', description: parsed.experienceText, technologies: '' }]
-          : prev.experience,
-        education: parsed.educationText
-          ? [{ id: uid(), degree: '', institution: '', location: '', startDate: '', endDate: '', description: parsed.educationText }]
-          : prev.education,
-        skills: parsed.skills.length > 0
-          ? parsed.skills.map(name => ({ id: uid(), name, level: '', category: '' }))
-          : prev.skills,
-        languages: parsed.languages.length > 0
-          ? parsed.languages.map(name => ({ id: uid(), name, level: '' }))
-          : prev.languages,
-        links: parsed.links.length > 0
-          ? parsed.links.map(l => ({ id: uid(), label: l.label, url: l.url }))
-          : prev.links,
-      }))
-      setActiveTab('editor')
+      const response = await fetch(`${PROXY_URL}/parse-cv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}))
+        throw new Error((errData as { error?: string }).error ?? `Error ${response.status}`)
+      }
+      const parsed = await response.json() as {
+        fullName?: string
+        email?: string
+        phone?: string | null
+        location?: string | null
+        title?: string | null
+        summary?: string | null
+        experience?: { title?: string; company?: string; location?: string | null; startDate?: string; endDate?: string | null; description?: string[]; technologies?: string[] }[]
+        education?: { degree?: string; institution?: string; location?: string | null; startDate?: string | null; endDate?: string | null; description?: string | null }[]
+        skills?: { name?: string; level?: string | null; category?: string | null }[]
+        languages?: { name?: string; level?: string }[]
+        links?: { label?: string; url?: string }[]
+      }
+
+      // Normaliza un valor: si es null/undefined/vacío devuelve ''
+      const s = (val: string | null | undefined) =>
+        (val != null && val.trim() !== '') ? val.trim() : ''
+
+      // Reemplaza el formulario completo con lo parseado (vacía lo anterior)
+      setForm({
+        name: '',   // el usuario lo pondrá al guardar
+        fullName: s(parsed.fullName),
+        email: s(parsed.email),
+        phone: s(parsed.phone),
+        location: s(parsed.location),
+        title: s(parsed.title),
+        summary: s(parsed.summary),
+        experience: Array.isArray(parsed.experience)
+          ? parsed.experience.map(e => ({
+              id: uid(),
+              title: s(e.title),
+              company: s(e.company),
+              location: s(e.location),
+              startDate: s(e.startDate),
+              endDate: s(e.endDate),
+              description: Array.isArray(e.description)
+                ? e.description.join('\n')
+                : s(e.description as unknown as string),
+              technologies: Array.isArray(e.technologies)
+                ? e.technologies.join(', ')
+                : s(e.technologies as unknown as string),
+            }))
+          : [],
+        education: Array.isArray(parsed.education)
+          ? parsed.education.map(e => ({
+              id: uid(),
+              degree: s(e.degree),
+              institution: s(e.institution),
+              location: s(e.location),
+              startDate: s(e.startDate),
+              endDate: s(e.endDate),
+              description: s(e.description),
+            }))
+          : [],
+        skills: Array.isArray(parsed.skills)
+          ? parsed.skills
+              .filter(sk => sk.name && sk.name.trim())
+              .map(sk => ({ id: uid(), name: s(sk.name), level: s(sk.level), category: s(sk.category) }))
+          : [],
+        languages: Array.isArray(parsed.languages)
+          ? parsed.languages
+              .filter(l => l.name && l.name.trim())
+              .map(l => ({ id: uid(), name: s(l.name), level: s(l.level) }))
+          : [],
+        links: Array.isArray(parsed.links)
+          ? parsed.links
+              .filter(l => l.url && l.url.trim())
+              .map(l => ({ id: uid(), label: s(l.label), url: s(l.url) }))
+          : [],
+      })
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : 'Failed to parse CV text.')
+      setParseError(err instanceof Error ? err.message : 'Error al parsear el CV. ¿Está el proxy corriendo en localhost:3001?')
     } finally {
       setParsing(false)
     }
@@ -811,8 +904,8 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               >
                 <Upload className="h-8 w-8 text-muted-foreground" />
                 <div className="text-center">
-                  <p className="text-sm font-medium">Drop your CV here or click to upload</p>
-                  <p className="text-xs text-muted-foreground mt-1">Supports TXT, PDF, DOCX</p>
+                  <p className="text-sm font-medium">Arrastra tu CV aquí o haz clic para subir</p>
+                  <p className="text-xs text-muted-foreground mt-1">Compatible con TXT, PDF, DOCX</p>
                 </div>
                 <input
                   ref={fileInputRef}
@@ -850,19 +943,19 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
             {/* Separator */}
             <div className="flex items-center gap-3">
               <Separator className="flex-1" />
-              <span className="text-xs text-muted-foreground">or</span>
+              <span className="text-xs text-muted-foreground">o</span>
               <Separator className="flex-1" />
             </div>
 
             {/* Paste area */}
             <div className="space-y-2">
-              <Label className="text-xs">Paste your CV text</Label>
+              <Label className="text-xs">Pega el texto de tu CV</Label>
               <Textarea
                 value={uploadText}
                 onChange={e => setUploadText(e.target.value)}
                 rows={12}
                 className="text-sm resize-none font-mono"
-                placeholder="Paste the full text of your CV here…"
+                placeholder="Pega aquí el texto completo de tu CV…"
               />
             </div>
 
@@ -876,11 +969,11 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               disabled={parsing || !uploadText.trim()}
               onClick={handleParse}
             >
-              {parsing ? 'Parsing…' : 'Parse and import'}
+              {parsing ? 'Analizando con IA…' : 'Parsear e importar'}
             </Button>
 
             <p className="text-xs text-muted-foreground text-center">
-              The parser will populate the Editor tab. Review and adjust before saving.
+              Ollama analizará tu CV y rellenará el Editor. Revisa y ajusta antes de guardar.
             </p>
           </div>
         </TabsContent>

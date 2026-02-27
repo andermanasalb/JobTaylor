@@ -7,18 +7,16 @@
 
 export type WorkMode = 'Remote' | 'Hybrid' | 'On-site'
 export type Seniority = 'Junior' | 'Mid' | 'Senior' | 'Lead' | 'Principal'
-export type Region = 'País Vasco' | 'Madrid' | 'Barcelona' | 'Remote (EU)'
 
 export interface SearchListing {
   id: string
   title: string
   company: string
-  location: string
-  region: Region
+  location: string          // ubicación libre tal como viene de Adzuna
   workMode: WorkMode
   seniority: Seniority
   postedDate: string        // ISO date string, e.g. "2026-02-20"
-  source: string            // "LinkedIn", "InfoJobs", etc.
+  source: string            // "Adzuna", "InfoJobs", etc.
   matchScore: number        // 0–100; computed by AI against base CV
   tags: string[]            // quick skill tags shown on the card
   description: string | null
@@ -26,4 +24,5 @@ export interface SearchListing {
   niceToHave: string[]
   techStack: string[]
   notes: string
+  url: string | null        // enlace a la oferta original
 }

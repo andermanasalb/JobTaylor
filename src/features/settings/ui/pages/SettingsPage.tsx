@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Cpu, Cloud, Globe, FileOutput, Layout, Shield, UserCircle, X } from 'lucide-react'
+import { Cpu, Cloud, Globe, FileOutput, Layout, Shield, UserCircle, X, Copy, Check } from 'lucide-react'
 import type { AppSettings, CvTemplate, ExportFormat, OutputLanguage } from '@/features/settings/domain/AppSettings'
 import { defaultSettings } from '@/features/settings/domain/AppSettings'
 import { PHOTO_STORAGE_KEY } from '@/features/settings/ui/hooks/usePhoto'
@@ -69,6 +69,8 @@ function resizeImage(dataUrl: string, maxPx = 300): Promise<string> {
 export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [showCloudDialog, setShowCloudDialog] = useState(false)
+  const [showLocalDialog, setShowLocalDialog] = useState(false)
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
   const [photo, setPhoto] = useState<string | undefined>(loadPhoto)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -104,6 +106,8 @@ export function SettingsPage() {
     setSettings(prev => {
       const next = { ...prev, ...patch }
       saveSettings(next)
+      // Notifica a otros componentes montados (ej. SearchPage) que el setting cambió
+      window.dispatchEvent(new Event('jobtaylor-settings-changed'))
       return next
     })
   }
@@ -113,13 +117,24 @@ export function SettingsPage() {
     if (mode === 'cloud') {
       setShowCloudDialog(true)
     } else {
-      update({ aiMode: 'local' })
+      setShowLocalDialog(true)
     }
   }
 
   function confirmCloud() {
     update({ aiMode: 'cloud' })
     setShowCloudDialog(false)
+  }
+
+  function confirmLocal() {
+    update({ aiMode: 'local' })
+    setShowLocalDialog(false)
+  }
+
+  function copyCmd(cmd: string) {
+    navigator.clipboard.writeText(cmd).catch(() => {})
+    setCopiedCmd(cmd)
+    setTimeout(() => setCopiedCmd(null), 2000)
   }
 
   return (
@@ -374,16 +389,99 @@ export function SettingsPage() {
       <AlertDialog open={showCloudDialog} onOpenChange={setShowCloudDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Switch to Cloud Processing?</AlertDialogTitle>
+            <AlertDialogTitle>¿Cambiar a procesamiento en la nube?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cloud mode will send your CV data and job posting content to an external AI service
-              for processing. While this provides faster and higher-quality results, your data will
-              leave your device. Make sure you are comfortable with this before proceeding.
+              El modo Cloud envía el contenido de tu CV y las ofertas de empleo a un servicio de IA externo.
+              Obtendrás resultados más rápidos y de mayor calidad, pero tus datos saldrán de tu dispositivo.
+              Asegúrate de que estás cómodo con esto antes de continuar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Stay on Local</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCloud}>Switch to Cloud</AlertDialogAction>
+            <AlertDialogCancel>Mantener Local</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCloud}>Cambiar a Cloud</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Local (Ollama) setup dialog */}
+      <AlertDialog open={showLocalDialog} onOpenChange={setShowLocalDialog}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Cpu className="h-4 w-4" />
+              Configurar IA Local (Ollama)
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 text-sm text-foreground">
+                <p className="text-muted-foreground">
+                  Para usar IA local necesitas instalar Ollama y arrancar el proxy de JobTaylor.
+                  Todo el procesamiento ocurre en tu dispositivo — ningún dato sale a internet.
+                </p>
+
+                <ol className="space-y-3 list-none">
+                  {/* Paso 1 */}
+                  <li className="flex flex-col gap-1">
+                    <span className="font-medium text-foreground">1. Instalar Ollama</span>
+                    <a
+                      href="https://ollama.com/download"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline underline-offset-2 text-xs"
+                    >
+                      ollama.com/download
+                    </a>
+                  </li>
+
+                  {/* Paso 2 */}
+                  <li className="flex flex-col gap-1">
+                    <span className="font-medium text-foreground">2. Descargar el modelo</span>
+                    <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 font-mono text-xs">
+                      <span className="flex-1">ollama pull llama3.2</span>
+                      <button
+                        type="button"
+                        onClick={() => copyCmd('ollama pull llama3.2')}
+                        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="Copiar comando"
+                      >
+                        {copiedCmd === 'ollama pull llama3.2'
+                          ? <Check className="h-3.5 w-3.5 text-green-500" />
+                          : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </li>
+
+                  {/* Paso 3 */}
+                  <li className="flex flex-col gap-1">
+                    <span className="font-medium text-foreground">3. Arrancar el proxy local</span>
+                    <p className="text-xs text-muted-foreground">En el directorio del proyecto JobTaylor:</p>
+                    <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 font-mono text-xs">
+                      <span className="flex-1">npm run proxy</span>
+                      <button
+                        type="button"
+                        onClick={() => copyCmd('npm run proxy')}
+                        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="Copiar comando"
+                      >
+                        {copiedCmd === 'npm run proxy'
+                          ? <Check className="h-3.5 w-3.5 text-green-500" />
+                          : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Deja esta terminal abierta mientras uses JobTaylor con IA local.
+                    </p>
+                  </li>
+                </ol>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => update({ aiMode: 'cloud' })}>
+              Cancelar (usar Cloud)
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLocal}>
+              Entendido, usar Local
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

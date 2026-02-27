@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2 } from 'lucide-react'
+import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2, Clock } from 'lucide-react'
 import { useAppDeps } from '@/app/AppDepsContext'
 import { listHistoryEntries } from '@/features/history/application/usecases/ListHistoryEntries'
 import { updateHistoryStatus } from '@/features/history/application/usecases/UpdateHistoryStatus'
 import type { HistoryEntry, HistoryStatus } from '@/features/history/domain/HistoryEntry'
-import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import {
@@ -42,18 +41,52 @@ import { exportTailoredCv } from '@/infra/export/exportTailoredCv'
 import { useSettings } from '@/features/settings/ui/hooks/useSettings'
 import { usePhoto } from '@/features/settings/ui/hooks/usePhoto'
 import { searchListingToJobPosting } from '@/features/job-postings/ui/utils/searchListingAdapter'
+import { useGenerationQueue } from '@/shared/context/GenerationQueueContext'
+import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const STATUS_CONFIG: Record<
-  HistoryStatus,
-  { label: string; variant: 'default' | 'secondary' | 'outline' }
-> = {
-  saved:     { label: 'Saved',     variant: 'outline'   },
-  generated: { label: 'Generated', variant: 'secondary' },
-  exported:  { label: 'Exported',  variant: 'default'   },
+type DisplayStatus = HistoryStatus | 'pending' | 'generating'
+
+function StatusPill({ status }: { status: DisplayStatus }) {
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        En cola
+      </span>
+    )
+  }
+  if (status === 'generating') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Generando
+      </span>
+    )
+  }
+  if (status === 'generated') {
+    return (
+      <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', 'bg-primary/10 text-primary')}>
+        CV generado
+      </span>
+    )
+  }
+  if (status === 'exported') {
+    return (
+      <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', 'bg-green-500/15 text-green-700 dark:text-green-400')}>
+        CV exportado
+      </span>
+    )
+  }
+  // saved
+  return (
+    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+      Guardada
+    </span>
+  )
 }
 
 function formatDate(date: Date): string {
@@ -74,6 +107,7 @@ export function HistoryPage() {
   const { historyRepository, cvRepository, aiClient, tailoredCvRepository } = useAppDeps()
   const settings = useSettings()
   const photo = usePhoto()
+  const generationQueue = useGenerationQueue()
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -303,7 +337,11 @@ export function HistoryPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map(entry => {
-                    const config = STATUS_CONFIG[entry.status]
+                    const queueEntry = generationQueue.jobs.get(entry.jobId)
+                    const effectiveStatus: DisplayStatus =
+                      queueEntry?.status === 'pending' ? 'pending'
+                      : queueEntry?.status === 'generating' ? 'generating'
+                      : entry.status
                     return (
                       <TableRow key={entry.id}>
                         <TableCell className="text-sm font-medium">
@@ -322,9 +360,7 @@ export function HistoryPage() {
                           {entry.region}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={config.variant} className="text-[10px]">
-                            {config.label}
-                          </Badge>
+                          <StatusPill status={effectiveStatus} />
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground tabular-nums">
                           {formatDate(entry.createdAt)}
@@ -397,7 +433,11 @@ export function HistoryPage() {
             {/* Mobile cards */}
             <div className="md:hidden p-3 space-y-2">
               {filtered.map(entry => {
-                const config = STATUS_CONFIG[entry.status]
+                const queueEntry = generationQueue.jobs.get(entry.jobId)
+                const effectiveStatus: DisplayStatus =
+                  queueEntry?.status === 'pending' ? 'pending'
+                  : queueEntry?.status === 'generating' ? 'generating'
+                  : entry.status
                 return (
                   <div
                     key={entry.id}
@@ -416,9 +456,9 @@ export function HistoryPage() {
                           {entry.company} — {entry.region}
                         </p>
                       </div>
-                      <Badge variant={config.variant} className="text-[10px] shrink-0">
-                        {config.label}
-                      </Badge>
+                      <div className="shrink-0">
+                        <StatusPill status={effectiveStatus} />
+                      </div>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground tabular-nums">

@@ -1,18 +1,19 @@
-import type { JobPosting, JobSource } from '../../domain/JobPosting'
+import type { SearchListing } from '../../ui/types/SearchListing'
 
 /**
- * Port for fetching job postings from external sources (LinkedIn, InfoJobs, Indeed, etc.).
- * Stage 0: no implementation — jobs are added manually.
- * Stage 1+: implement adapters per portal behind this interface.
+ * Port for fetching job listings from external sources (Adzuna, LinkedIn, etc.).
+ * Stage 0: FakeJobFeedAdapter returns static mock data.
+ * Stage 1.6+: AdzunaJobFeedAdapter fetches real results from the Adzuna API.
  */
 export interface JobSearchCriteria {
-  keywords?: string[]
+  keywords?: string
   location?: string
   remote?: boolean
-  salaryMin?: number
-  source?: JobSource
+  country?: string      // ISO country code, e.g. 'es'. Defaults to 'es'.
+  resultsPerPage?: number
+  page?: number         // 1-based page number for pagination. Defaults to 1.
 }
 
 export interface JobFeedPort {
-  search(criteria: JobSearchCriteria): Promise<JobPosting[]>
+  search(criteria: JobSearchCriteria): Promise<SearchListing[]>
 }

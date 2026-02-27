@@ -8,6 +8,7 @@ interface JobCardProps {
   job: SearchListing
   isSelected?: boolean
   isSaved?: boolean
+  score?: number | null
   onSelect?: (job: SearchListing) => void
   onSave?: (job: SearchListing) => void
 }
@@ -23,7 +24,8 @@ function scoreColor(score: number) {
   return 'bg-muted text-muted-foreground'
 }
 
-export function JobCard({ job, isSelected, isSaved, onSelect, onSave }: JobCardProps) {
+export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: JobCardProps) {
+  const displayScore = score ?? job.matchScore
   return (
     <button
       type="button"
@@ -46,10 +48,10 @@ export function JobCard({ job, isSelected, isSaved, onSelect, onSave }: JobCardP
         <span
           className={cn(
             'shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
-            scoreColor(job.matchScore),
+            scoreColor(displayScore),
           )}
         >
-          {job.matchScore}%
+          {displayScore}%
         </span>
       </div>
 
@@ -98,11 +100,18 @@ export function JobCard({ job, isSelected, isSaved, onSelect, onSave }: JobCardP
             size="icon"
             className="h-7 w-7"
             onClick={e => e.stopPropagation()}
-            aria-label="Open original posting"
+            aria-label="Abrir oferta original"
             asChild
+            disabled={!job.url}
           >
-            <a href="#" aria-label="Open details">
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            <a
+              href={job.url ?? '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Abrir oferta original"
+              onClick={e => { if (!job.url) e.preventDefault(); e.stopPropagation() }}
+            >
+              <ExternalLink className={`h-3.5 w-3.5 ${job.url ? 'text-muted-foreground' : 'text-muted-foreground/30'}`} />
             </a>
           </Button>
         </div>

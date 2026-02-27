@@ -3,12 +3,17 @@ import { InMemoryJobPostingRepository } from '../infra/memory/InMemoryJobPosting
 import { InMemoryTailoredCvRepository } from '../infra/memory/InMemoryTailoredCvRepository'
 import { LocalStorageHistoryRepository } from '../infra/memory/LocalStorageHistoryRepository'
 import { FakeAiClient } from '../infra/ai/FakeAiClient'
+import { FakeJobFeedAdapter } from '../infra/job-feed/FakeJobFeedAdapter'
+import { FakeEnrichmentAdapter } from '../infra/enrichment/FakeEnrichmentAdapter'
+import { OllamaEnrichmentAdapter } from '../infra/enrichment/OllamaEnrichmentAdapter'
 import type { CvRepository } from '../features/cv-base/application/ports/CvRepository'
 import type { JobPostingRepository } from '../features/job-postings/application/ports/JobPostingRepository'
 import type { TailoredCvRepository } from '../features/tailoring/application/ports/TailoredCvRepository'
 import type { AiClient } from '../features/tailoring/application/ports/AiClient'
 import type { HistoryRepository } from '../features/history/application/ports/HistoryRepository'
 import type { AuthRepository } from '../features/auth/application/ports/AuthRepository'
+import type { JobFeedPort } from '../features/job-postings/application/ports/JobFeedPort'
+import type { JobEnrichmentPort } from '../features/job-postings/application/ports/JobEnrichmentPort'
 
 export interface AppDependencies {
   cvRepository: CvRepository
@@ -17,9 +22,15 @@ export interface AppDependencies {
   aiClient: AiClient
   historyRepository: HistoryRepository
   authRepository: AuthRepository
+  jobFeedPort: JobFeedPort
+  jobEnrichmentPort: JobEnrichmentPort
 }
 
 const useSupabase = import.meta.env.VITE_USE_SUPABASE === 'true'
+const adzunaAppId = import.meta.env.VITE_ADZUNA_APP_ID as string | undefined
+const adzunaAppKey = import.meta.env.VITE_ADZUNA_APP_KEY as string | undefined
+// 'local' usa OllamaEnrichmentAdapter (proxy local), cualquier otro valor usa Fake
+const aiMode = import.meta.env.VITE_AI_MODE as string | undefined
 
 /**
  * Composition root.
@@ -42,11 +53,13 @@ async function buildDeps(): Promise<AppDependencies> {
       { SupabaseJobPostingRepository },
       { SupabaseTailoredCvRepository },
       { SupabaseAuthRepository },
+      { AdzunaJobFeedAdapter },
     ] = await Promise.all([
       import('../infra/supabase/SupabaseCvRepository'),
       import('../infra/supabase/SupabaseJobPostingRepository'),
       import('../infra/supabase/SupabaseTailoredCvRepository'),
       import('../infra/supabase/SupabaseAuthRepository'),
+      import('../infra/job-feed/AdzunaJobFeedAdapter'),
     ])
 
     return {
@@ -56,6 +69,12 @@ async function buildDeps(): Promise<AppDependencies> {
       aiClient: new FakeAiClient(),
       historyRepository: new LocalStorageHistoryRepository(),
       authRepository: new SupabaseAuthRepository(),
+      jobFeedPort: adzunaAppId && adzunaAppKey
+        ? new AdzunaJobFeedAdapter(adzunaAppId, adzunaAppKey)
+        : new FakeJobFeedAdapter(),
+      jobEnrichmentPort: aiMode === 'local'
+        ? new OllamaEnrichmentAdapter()
+        : new FakeEnrichmentAdapter(),
     }
   }
 
@@ -68,6 +87,10 @@ async function buildDeps(): Promise<AppDependencies> {
     aiClient: new FakeAiClient(),
     historyRepository: new LocalStorageHistoryRepository(),
     authRepository: new FakeAuthRepository(),
+    jobFeedPort: new FakeJobFeedAdapter(),
+    jobEnrichmentPort: aiMode === 'local'
+      ? new OllamaEnrichmentAdapter()
+      : new FakeEnrichmentAdapter(),
   }
 }
 
