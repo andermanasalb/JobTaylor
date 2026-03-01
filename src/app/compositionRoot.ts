@@ -43,8 +43,7 @@ const aiMode = import.meta.env.VITE_AI_MODE as string | undefined
  *
  * Domain and application layers never import from this file.
  *
- * Note: HistoryRepository uses InMemory in both stages until a Supabase
- * implementation is added in Stage 2.
+ * Note: Stage 0 uses LocalStorageHistoryRepository. Stage 1+ uses SupabaseHistoryRepository.
  */
 async function buildDeps(): Promise<AppDependencies> {
   if (useSupabase) {
@@ -53,12 +52,14 @@ async function buildDeps(): Promise<AppDependencies> {
       { SupabaseJobPostingRepository },
       { SupabaseTailoredCvRepository },
       { SupabaseAuthRepository },
+      { SupabaseHistoryRepository },
       { AdzunaJobFeedAdapter },
     ] = await Promise.all([
       import('../infra/supabase/SupabaseCvRepository'),
       import('../infra/supabase/SupabaseJobPostingRepository'),
       import('../infra/supabase/SupabaseTailoredCvRepository'),
       import('../infra/supabase/SupabaseAuthRepository'),
+      import('../infra/supabase/SupabaseHistoryRepository'),
       import('../infra/job-feed/AdzunaJobFeedAdapter'),
     ])
 
@@ -67,7 +68,7 @@ async function buildDeps(): Promise<AppDependencies> {
       jobPostingRepository: new SupabaseJobPostingRepository(),
       tailoredCvRepository: new SupabaseTailoredCvRepository(),
       aiClient: new FakeAiClient(),
-      historyRepository: new LocalStorageHistoryRepository(),
+      historyRepository: new SupabaseHistoryRepository(),
       authRepository: new SupabaseAuthRepository(),
       jobFeedPort: adzunaAppId && adzunaAppKey
         ? new AdzunaJobFeedAdapter(adzunaAppId, adzunaAppKey)
