@@ -1,4 +1,5 @@
 import { MapPin, Calendar, Bookmark, ExternalLink } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -25,6 +26,7 @@ function scoreColor(score: number) {
 }
 
 export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: JobCardProps) {
+  const { t } = useTranslation()
   const displayScore = score ?? job.matchScore
   return (
     <button
@@ -72,7 +74,7 @@ export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: J
             variant={job.workMode === 'Remote' ? 'default' : 'secondary'}
             className="text-[10px] px-1.5 py-0 h-5"
           >
-            {job.workMode}
+            {t(`filter.workMode.${job.workMode}`)}
           </Badge>
           {job.tags.slice(0, 2).map(tag => (
             <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 h-5">
@@ -86,7 +88,7 @@ export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: J
             size="icon"
             className="h-7 w-7"
             onClick={e => { e.stopPropagation(); onSave?.(job) }}
-            aria-label={isSaved ? 'Unsave posting' : 'Save posting'}
+            aria-label={isSaved ? t('jobCard.unsave') : t('jobCard.save')}
           >
             <Bookmark
               className={cn(
@@ -100,7 +102,7 @@ export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: J
             size="icon"
             className="h-7 w-7"
             onClick={e => e.stopPropagation()}
-            aria-label="Abrir oferta original"
+            aria-label={t('jobCard.openOriginal')}
             asChild
             disabled={!job.url}
           >
@@ -108,7 +110,7 @@ export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: J
               href={job.url ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Abrir oferta original"
+              aria-label={t('jobCard.openOriginal')}
               onClick={e => { if (!job.url) e.preventDefault(); e.stopPropagation() }}
             >
               <ExternalLink className={`h-3.5 w-3.5 ${job.url ? 'text-muted-foreground' : 'text-muted-foreground/30'}`} />

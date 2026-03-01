@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Plus,
   Trash2,
@@ -269,6 +270,7 @@ interface CvFormProps {
 }
 
 export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus = 'idle', onBack, submitLabel = 'Save' }: CvFormProps) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<FormState>(() =>
     initial ? domainToForm(initial) : emptyForm(),
   )
@@ -408,7 +410,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
   async function handleParse() {
     const text = uploadText.trim()
     if (!text) {
-      setParseError('Pega o sube el texto de tu CV antes de parsear.')
+      setParseError(t('cv.upload.pasteFirst'))
       return
     }
     setParsing(true)
@@ -524,13 +526,13 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 size="icon"
                 className="h-7 w-7 shrink-0"
                 onClick={onBack}
-                aria-label="Back to CVs"
+                aria-label={t('cv.backLabel')}
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-base font-semibold truncate">{form.fullName || form.name || <span className="text-muted-foreground font-normal">New CV</span>}</p>
+              <p className="text-base font-semibold truncate">{form.fullName || form.name || <span className="text-muted-foreground font-normal">{t('cv.newCv')}</span>}</p>
               {form.title && (
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{form.title}</p>
               )}
@@ -541,9 +543,9 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <Download className="h-3.5 w-3.5" />
             )}
             {saving
-              ? (submitLabel !== 'Save' ? 'Exporting…' : 'Saving…')
+              ? (submitLabel !== 'Save' ? t('cv.exporting') : t('cv.saving'))
               : saveStatus === 'saved'
-              ? (submitLabel !== 'Save' ? 'Done ✓' : 'Saved ✓')
+              ? (submitLabel !== 'Save' ? t('cv.done') : t('cv.saved'))
               : submitLabel}
           </Button>
         </div>
@@ -561,9 +563,9 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <TabsTrigger
                 key={tab}
                 value={tab}
-                className="h-9 rounded-none border-none px-0 pb-2 pt-2 text-xs font-medium capitalize bg-transparent shadow-none focus-visible:ring-0 focus-visible:outline-none data-[state=active]:font-bold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground"
+                className="h-9 rounded-none border-none px-0 pb-2 pt-2 text-xs font-medium bg-transparent shadow-none focus-visible:ring-0 focus-visible:outline-none data-[state=active]:font-bold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground"
               >
-                {tab}
+                {t(`cv.tabs.${tab}`)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -578,13 +580,13 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <User className="h-4 w-4 text-primary" />
-                  Personal Info
+                  {t('cv.sections.personalInfo')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Full name *</Label>
+                     <Label className="text-xs">{t('cv.fields.fullName')}</Label>
                     <Input
                       value={form.fullName}
                       onChange={e => set('fullName', e.target.value)}
@@ -594,7 +596,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Email *</Label>
+                     <Label className="text-xs">{t('cv.fields.email')}</Label>
                     <Input
                       type="email"
                       value={form.email}
@@ -607,7 +609,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Phone</Label>
+                     <Label className="text-xs">{t('cv.fields.phone')}</Label>
                     <Input
                       value={form.phone}
                       onChange={e => set('phone', e.target.value)}
@@ -616,7 +618,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Location</Label>
+                     <Label className="text-xs">{t('cv.fields.location')}</Label>
                     <Input
                       value={form.location}
                       onChange={e => set('location', e.target.value)}
@@ -626,7 +628,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Professional title</Label>
+                  <Label className="text-xs">{t('cv.fields.professionalTitle')}</Label>
                   <Input
                     value={form.title}
                     onChange={e => set('title', e.target.value)}
@@ -642,7 +644,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <FileText className="h-4 w-4 text-primary" />
-                  Summary
+                  {t('cv.sections.summary')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -651,7 +653,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                   onChange={e => set('summary', e.target.value)}
                   rows={4}
                   className="text-sm resize-none"
-                  placeholder="Write a professional summary..."
+                  placeholder={t('cv.fields.summaryPlaceholder')}
                 />
               </CardContent>
             </Card>
@@ -662,11 +664,11 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Briefcase className="h-4 w-4 text-primary" />
-                    Experience
+                    {t('cv.sections.experience')}
                   </CardTitle>
                   <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={addExp}>
                     <Plus className="h-3 w-3 mr-1" />
-                    Add
+                    {t('cv.add')}
                   </Button>
                 </div>
               </CardHeader>
@@ -674,36 +676,36 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 {form.experience.map(exp => (
                   <div key={exp.id} className="group relative rounded-lg border border-border p-4">
                     <div className="grid grid-cols-2 gap-3 mb-3">
-                      <Input value={exp.title} onChange={e => updateExp(exp.id, 'title', e.target.value)} placeholder="Job title" className="text-sm h-8" />
-                      <Input value={exp.company} onChange={e => updateExp(exp.id, 'company', e.target.value)} placeholder="Company" className="text-sm h-8" />
+                      <Input value={exp.title} onChange={e => updateExp(exp.id, 'title', e.target.value)} placeholder={t('cv.fields.jobTitle')} className="text-sm h-8" />
+                       <Input value={exp.company} onChange={e => updateExp(exp.id, 'company', e.target.value)} placeholder={t('cv.fields.company')} className="text-sm h-8" />
                     </div>
                     <div className="grid grid-cols-2 gap-3 mb-3">
-                      <Input value={exp.startDate} onChange={e => updateExp(exp.id, 'startDate', e.target.value)} placeholder="Start (YYYY-MM)" className="text-sm h-8" />
-                      <Input value={exp.endDate} onChange={e => updateExp(exp.id, 'endDate', e.target.value)} placeholder="End (YYYY-MM or Present)" className="text-sm h-8" />
+                      <Input value={exp.startDate} onChange={e => updateExp(exp.id, 'startDate', e.target.value)} placeholder={t('cv.fields.startDate')} className="text-sm h-8" />
+                       <Input value={exp.endDate} onChange={e => updateExp(exp.id, 'endDate', e.target.value)} placeholder={t('cv.fields.endDate')} className="text-sm h-8" />
                     </div>
-                    <Input value={exp.location} onChange={e => updateExp(exp.id, 'location', e.target.value)} placeholder="Location (optional)" className="text-sm h-8 mb-3" />
+                     <Input value={exp.location} onChange={e => updateExp(exp.id, 'location', e.target.value)} placeholder={t('cv.fields.locationOptional')} className="text-sm h-8 mb-3" />
                     <Textarea
                       value={exp.description}
                       onChange={e => updateExp(exp.id, 'description', e.target.value)}
-                      placeholder="One bullet point per line..."
+                      placeholder={t('cv.fields.bulletPoints')}
                       rows={3}
                       className="text-sm resize-none mb-3"
                     />
-                    <Input value={exp.technologies} onChange={e => updateExp(exp.id, 'technologies', e.target.value)} placeholder="Technologies (comma-separated)" className="text-sm h-8" />
+                     <Input value={exp.technologies} onChange={e => updateExp(exp.id, 'technologies', e.target.value)} placeholder={t('cv.fields.technologies')} className="text-sm h-8" />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                       onClick={() => removeExp(exp.id)}
-                      aria-label="Remove experience"
+                       aria-label={t('cv.remove.experience')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 ))}
                 {form.experience.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">No experience added yet</p>
+                  <p className="text-xs text-muted-foreground text-center py-2">{t('cv.empty.experience')}</p>
                 )}
               </CardContent>
             </Card>
@@ -714,11 +716,11 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <GraduationCap className="h-4 w-4 text-primary" />
-                    Education
+                    {t('cv.sections.education')}
                   </CardTitle>
                   <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={addEdu}>
                     <Plus className="h-3 w-3 mr-1" />
-                    Add
+                    {t('cv.add')}
                   </Button>
                 </div>
               </CardHeader>
@@ -726,29 +728,29 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 {form.education.map(edu => (
                   <div key={edu.id} className="group relative rounded-lg border border-border p-4">
                     <div className="grid grid-cols-2 gap-3 mb-3">
-                      <Input value={edu.degree} onChange={e => updateEdu(edu.id, 'degree', e.target.value)} placeholder="Degree" className="text-sm h-8" />
-                      <Input value={edu.institution} onChange={e => updateEdu(edu.id, 'institution', e.target.value)} placeholder="Institution" className="text-sm h-8" />
+                      <Input value={edu.degree} onChange={e => updateEdu(edu.id, 'degree', e.target.value)} placeholder={t('cv.fields.degree')} className="text-sm h-8" />
+                       <Input value={edu.institution} onChange={e => updateEdu(edu.id, 'institution', e.target.value)} placeholder={t('cv.fields.institution')} className="text-sm h-8" />
                     </div>
                     <div className="grid grid-cols-2 gap-3 mb-3">
-                      <Input value={edu.startDate} onChange={e => updateEdu(edu.id, 'startDate', e.target.value)} placeholder="Start (YYYY-MM)" className="text-sm h-8" />
-                      <Input value={edu.endDate} onChange={e => updateEdu(edu.id, 'endDate', e.target.value)} placeholder="End (YYYY-MM)" className="text-sm h-8" />
+                      <Input value={edu.startDate} onChange={e => updateEdu(edu.id, 'startDate', e.target.value)} placeholder={t('cv.fields.startDate')} className="text-sm h-8" />
+                       <Input value={edu.endDate} onChange={e => updateEdu(edu.id, 'endDate', e.target.value)} placeholder={t('cv.fields.startDate')} className="text-sm h-8" />
                     </div>
-                    <Input value={edu.location} onChange={e => updateEdu(edu.id, 'location', e.target.value)} placeholder="Location (optional)" className="text-sm h-8 mb-3" />
-                    <Input value={edu.description} onChange={e => updateEdu(edu.id, 'description', e.target.value)} placeholder="Details (optional)" className="text-sm h-8" />
+                     <Input value={edu.location} onChange={e => updateEdu(edu.id, 'location', e.target.value)} placeholder={t('cv.fields.locationOptional')} className="text-sm h-8 mb-3" />
+                     <Input value={edu.description} onChange={e => updateEdu(edu.id, 'description', e.target.value)} placeholder={t('cv.fields.details')} className="text-sm h-8" />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                       onClick={() => removeEdu(edu.id)}
-                      aria-label="Remove education"
+                       aria-label={t('cv.remove.education')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 ))}
                 {form.education.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">No education added yet</p>
+                  <p className="text-xs text-muted-foreground text-center py-2">{t('cv.empty.education')}</p>
                 )}
               </CardContent>
             </Card>
@@ -758,7 +760,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <Code className="h-4 w-4 text-primary" />
-                  Skills
+                  {t('cv.sections.skills')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -786,7 +788,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                         setSkillInput('')
                       }
                     }}
-                    placeholder="Add a skill and press Enter..."
+                    placeholder={t('cv.fields.addSkill')}
                     className="text-sm h-8 flex-1"
                   />
                   <Button
@@ -796,7 +798,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                     className="h-8 text-xs"
                     onClick={() => { addSkill(skillInput); setSkillInput('') }}
                   >
-                    Add
+                    {t('cv.add')}
                   </Button>
                 </div>
               </CardContent>
@@ -808,33 +810,33 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Languages className="h-4 w-4 text-primary" />
-                    Languages
+                    {t('cv.sections.languages')}
                   </CardTitle>
                   <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={addLang}>
                     <Plus className="h-3 w-3 mr-1" />
-                    Add
+                    {t('cv.add')}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
                 {form.languages.map(lang => (
                   <div key={lang.id} className="group flex items-center gap-2">
-                    <Input value={lang.name} onChange={e => updateLang(lang.id, 'name', e.target.value)} placeholder="Language" className="text-sm h-8 flex-1" />
-                    <Input value={lang.level} onChange={e => updateLang(lang.id, 'level', e.target.value)} placeholder="Level (e.g. C1, Native)" className="text-sm h-8 flex-1" />
+                     <Input value={lang.name} onChange={e => updateLang(lang.id, 'name', e.target.value)} placeholder={t('cv.fields.language')} className="text-sm h-8 flex-1" />
+                     <Input value={lang.level} onChange={e => updateLang(lang.id, 'level', e.target.value)} placeholder={t('cv.fields.level')} className="text-sm h-8 flex-1" />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
                       onClick={() => removeLang(lang.id)}
-                      aria-label="Remove language"
+                       aria-label={t('cv.remove.language')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 ))}
                 {form.languages.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">No languages added yet</p>
+                  <p className="text-xs text-muted-foreground text-center py-2">{t('cv.empty.languages')}</p>
                 )}
               </CardContent>
             </Card>
@@ -845,33 +847,33 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Link2 className="h-4 w-4 text-primary" />
-                    Links
+                    {t('cv.sections.links')}
                   </CardTitle>
                   <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={addLink}>
                     <Plus className="h-3 w-3 mr-1" />
-                    Add
+                    {t('cv.add')}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
                 {form.links.map(link => (
                   <div key={link.id} className="group flex items-center gap-2">
-                    <Input value={link.label} onChange={e => updateLink(link.id, 'label', e.target.value)} placeholder="Label (e.g. LinkedIn)" className="text-sm h-8 w-32 shrink-0" />
-                    <Input value={link.url} onChange={e => updateLink(link.id, 'url', e.target.value)} placeholder="https://..." className="text-sm h-8 flex-1" />
+                     <Input value={link.label} onChange={e => updateLink(link.id, 'label', e.target.value)} placeholder={t('cv.fields.linkLabel')} className="text-sm h-8 w-32 shrink-0" />
+                     <Input value={link.url} onChange={e => updateLink(link.id, 'url', e.target.value)} placeholder={t('cv.fields.linkUrl')} className="text-sm h-8 flex-1" />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
                       onClick={() => removeLink(link.id)}
-                      aria-label="Remove link"
+                       aria-label={t('cv.remove.link')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 ))}
                 {form.links.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">No links added yet</p>
+                  <p className="text-xs text-muted-foreground text-center py-2">{t('cv.empty.links')}</p>
                 )}
               </CardContent>
             </Card>
@@ -904,8 +906,8 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               >
                 <Upload className="h-8 w-8 text-muted-foreground" />
                 <div className="text-center">
-                  <p className="text-sm font-medium">Arrastra tu CV aquí o haz clic para subir</p>
-                  <p className="text-xs text-muted-foreground mt-1">Compatible con TXT, PDF, DOCX</p>
+                   <p className="text-sm font-medium">{t('cv.upload.dropzone')}</p>
+                   <p className="text-xs text-muted-foreground mt-1">{t('cv.upload.formats')}</p>
                 </div>
                 <input
                   ref={fileInputRef}
@@ -933,7 +935,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                   size="icon"
                   className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
                   onClick={() => { setUploadedFile(null); setUploadText('') }}
-                  aria-label="Remove file"
+                   aria-label={t('cv.remove.file')}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -943,19 +945,19 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
             {/* Separator */}
             <div className="flex items-center gap-3">
               <Separator className="flex-1" />
-              <span className="text-xs text-muted-foreground">o</span>
+              <span className="text-xs text-muted-foreground">{t('cv.upload.or')}</span>
               <Separator className="flex-1" />
             </div>
 
             {/* Paste area */}
             <div className="space-y-2">
-              <Label className="text-xs">Pega el texto de tu CV</Label>
+              <Label className="text-xs">{t('cv.upload.pasteLabel')}</Label>
               <Textarea
                 value={uploadText}
                 onChange={e => setUploadText(e.target.value)}
                 rows={12}
                 className="text-sm resize-none font-mono"
-                placeholder="Pega aquí el texto completo de tu CV…"
+                placeholder={t('cv.upload.pastePlaceholder')}
               />
             </div>
 
@@ -969,11 +971,11 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               disabled={parsing || !uploadText.trim()}
               onClick={handleParse}
             >
-              {parsing ? 'Analizando con IA…' : 'Parsear e importar'}
+              {parsing ? t('cv.upload.parsing') : t('cv.upload.parse')}
             </Button>
 
             <p className="text-xs text-muted-foreground text-center">
-              Ollama analizará tu CV y rellenará el Editor. Revisa y ajusta antes de guardar.
+              {t('cv.upload.hint')}
             </p>
           </div>
         </TabsContent>
@@ -987,6 +989,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
 // ---------------------------------------------------------------------------
 
 function CvPreview({ form }: { form: FormState }) {
+  const { t } = useTranslation()
   return (
     <div className="rounded-lg border border-border bg-card p-6 md:p-8 shadow-sm space-y-6">
       {/* Header */}
@@ -1016,7 +1019,7 @@ function CvPreview({ form }: { form: FormState }) {
           <section>
             <div className="flex items-center gap-2 mb-2">
               <FileText className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Summary</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('cv.preview.summary')}</h3>
             </div>
             <p className="text-sm text-foreground leading-relaxed">{form.summary}</p>
           </section>
@@ -1029,7 +1032,7 @@ function CvPreview({ form }: { form: FormState }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Briefcase className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Experience</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('cv.preview.experience')}</h3>
             </div>
             <div className="space-y-4">
               {form.experience.map(exp => (
@@ -1040,7 +1043,7 @@ function CvPreview({ form }: { form: FormState }) {
                       {exp.company && <span className="font-normal text-muted-foreground"> at {exp.company}</span>}
                     </h4>
                     <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                      {exp.startDate}{exp.endDate ? ` – ${exp.endDate}` : exp.startDate ? ' – Present' : ''}
+                      {exp.startDate}{exp.endDate ? ` – ${exp.endDate}` : exp.startDate ? ` – ${t('cv.preview.present')}` : ''}
                     </span>
                   </div>
                   {exp.location && <p className="text-xs text-muted-foreground mb-1">{exp.location}</p>}
@@ -1074,7 +1077,7 @@ function CvPreview({ form }: { form: FormState }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <GraduationCap className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Education</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('cv.preview.education')}</h3>
             </div>
             <div className="space-y-2">
               {form.education.map(edu => (
@@ -1101,7 +1104,7 @@ function CvPreview({ form }: { form: FormState }) {
           <section>
             <div className="flex items-center gap-2 mb-2">
               <Code className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Skills</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('cv.preview.skills')}</h3>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {form.skills.map(skill => (
@@ -1118,7 +1121,7 @@ function CvPreview({ form }: { form: FormState }) {
           <section>
             <div className="flex items-center gap-2 mb-2">
               <Languages className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Languages</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('cv.preview.languages')}</h3>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {form.languages.map(lang => (

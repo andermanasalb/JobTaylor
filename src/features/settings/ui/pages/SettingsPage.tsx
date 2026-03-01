@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/shared/i18n/i18n'
 import { Cpu, Cloud, Globe, FileOutput, Layout, Shield, UserCircle, X, Copy, Check } from 'lucide-react'
 import type { AppSettings, CvTemplate, ExportFormat, OutputLanguage } from '@/features/settings/domain/AppSettings'
 import { defaultSettings } from '@/features/settings/domain/AppSettings'
@@ -67,6 +69,7 @@ function resizeImage(dataUrl: string, maxPx = 300): Promise<string> {
 }
 
 export function SettingsPage() {
+  const { t } = useTranslation()
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [showCloudDialog, setShowCloudDialog] = useState(false)
   const [showLocalDialog, setShowLocalDialog] = useState(false)
@@ -106,6 +109,10 @@ export function SettingsPage() {
     setSettings(prev => {
       const next = { ...prev, ...patch }
       saveSettings(next)
+      // Cambiar idioma de la UI si cambió outputLanguage
+      if (patch.outputLanguage !== undefined) {
+        i18n.changeLanguage(patch.outputLanguage === 'EN' ? 'en' : 'es')
+      }
       // Notifica a otros componentes montados (ej. SearchPage) que el setting cambió
       window.dispatchEvent(new Event('jobtaylor-settings-changed'))
       return next
@@ -141,9 +148,9 @@ export function SettingsPage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="border-b border-border px-4 py-4 md:px-6">
-        <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+        <h1 className="text-lg font-semibold text-foreground">{t('settings.title')}</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Configure your JobTaylor preferences
+          {t('settings.subtitle')}
         </p>
       </div>
 
@@ -156,10 +163,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Cpu className="h-4 w-4 text-primary" />
-                AI Processing Mode
+                {t('settings.aiMode.title')}
               </CardTitle>
               <CardDescription className="text-xs">
-                Choose how your CV is processed. Local mode keeps all data on your device.
+                {t('settings.aiMode.desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -177,10 +184,10 @@ export function SettingsPage() {
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Cpu className="h-4 w-4 text-foreground" />
-                    <span className="text-sm font-medium text-foreground">Local</span>
+                    <span className="text-sm font-medium text-foreground">{t('settings.aiMode.local')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Process on your device. Slower but fully private.
+                    {t('settings.aiMode.localDesc')}
                   </p>
                 </button>
 
@@ -197,10 +204,10 @@ export function SettingsPage() {
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Cloud className="h-4 w-4 text-foreground" />
-                    <span className="text-sm font-medium text-foreground">Cloud</span>
+                    <span className="text-sm font-medium text-foreground">{t('settings.aiMode.cloud')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Faster results. Data sent to external API.
+                    {t('settings.aiMode.cloudDesc')}
                   </p>
                 </button>
               </div>
@@ -212,10 +219,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Globe className="h-4 w-4 text-primary" />
-                Output Language
+                {t('settings.outputLanguage.title')}
               </CardTitle>
               <CardDescription className="text-xs">
-                Language used for generated CV content
+                {t('settings.outputLanguage.desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -228,7 +235,7 @@ export function SettingsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="EN">English</SelectItem>
-                  <SelectItem value="ES">Spanish</SelectItem>
+                  <SelectItem value="ES">Español</SelectItem>
                 </SelectContent>
               </Select>
             </CardContent>
@@ -239,10 +246,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Layout className="h-4 w-4 text-primary" />
-                CV Template
+                {t('settings.template.title')}
               </CardTitle>
               <CardDescription className="text-xs">
-                Visual style for exported CVs
+                {t('settings.template.desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -275,11 +282,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Shield className="h-4 w-4 text-primary" />
-                Tailoring Strictness
+                {t('settings.strictness.title')}
               </CardTitle>
               <CardDescription className="text-xs">
-                How closely the tailored CV should match your original experience. Higher values
-                prevent creative liberties.
+                {t('settings.strictness.desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -293,9 +299,9 @@ export function SettingsPage() {
                   className="w-full"
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Creative</span>
+                  <span>{t('settings.strictness.creative')}</span>
                   <span className="font-medium text-foreground tabular-nums">{settings.strictness}%</span>
-                  <span>Strict</span>
+                  <span>{t('settings.strictness.strict')}</span>
                 </div>
               </div>
             </CardContent>
@@ -306,10 +312,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <FileOutput className="h-4 w-4 text-primary" />
-                Export Defaults
+                {t('settings.exportFormat.title')}
               </CardTitle>
               <CardDescription className="text-xs">
-                Default format when exporting tailored CVs
+                {t('settings.exportFormat.desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -334,10 +340,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <UserCircle className="h-4 w-4 text-primary" />
-                Profile Photo
+                {t('settings.photo.title')}
               </CardTitle>
               <CardDescription className="text-xs">
-                Optional photo included in exported CVs. Stored locally on your device.
+                {t('settings.photo.desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -355,20 +361,20 @@ export function SettingsPage() {
                     onClick={handlePhotoRemove}
                   >
                     <X className="h-3.5 w-3.5" />
-                    Remove photo
+                    {t('settings.photo.remove')}
                   </Button>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-dashed border-border py-8">
                   <UserCircle className="h-10 w-10 text-muted-foreground/40" />
-                  <p className="text-xs text-muted-foreground">No photo uploaded</p>
+                  <p className="text-xs text-muted-foreground">{t('settings.photo.noPhoto')}</p>
                   <Button
                     size="sm"
                     variant="outline"
                     className="text-xs"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    Upload photo
+                    {t('settings.photo.upload')}
                   </Button>
                 </div>
               )}
@@ -389,16 +395,14 @@ export function SettingsPage() {
       <AlertDialog open={showCloudDialog} onOpenChange={setShowCloudDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cambiar a procesamiento en la nube?</AlertDialogTitle>
+            <AlertDialogTitle>{t('settings.dialogs.cloudTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              El modo Cloud envía el contenido de tu CV y las ofertas de empleo a un servicio de IA externo.
-              Obtendrás resultados más rápidos y de mayor calidad, pero tus datos saldrán de tu dispositivo.
-              Asegúrate de que estás cómodo con esto antes de continuar.
+              {t('settings.dialogs.cloudDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Mantener Local</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCloud}>Cambiar a Cloud</AlertDialogAction>
+            <AlertDialogCancel>{t('settings.dialogs.keepLocal')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCloud}>{t('settings.dialogs.switchCloud')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -409,19 +413,18 @@ export function SettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Cpu className="h-4 w-4" />
-              Configurar IA Local (Ollama)
+              {t('settings.dialogs.localTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-4 text-sm text-foreground">
                 <p className="text-muted-foreground">
-                  Para usar IA local necesitas instalar Ollama y arrancar el proxy de JobTaylor.
-                  Todo el procesamiento ocurre en tu dispositivo — ningún dato sale a internet.
+                  {t('settings.dialogs.localDesc')}
                 </p>
 
                 <ol className="space-y-3 list-none">
                   {/* Paso 1 */}
                   <li className="flex flex-col gap-1">
-                    <span className="font-medium text-foreground">1. Instalar Ollama</span>
+                    <span className="font-medium text-foreground">{t('settings.dialogs.localStep1')}</span>
                     <a
                       href="https://ollama.com/download"
                       target="_blank"
@@ -434,14 +437,14 @@ export function SettingsPage() {
 
                   {/* Paso 2 */}
                   <li className="flex flex-col gap-1">
-                    <span className="font-medium text-foreground">2. Descargar el modelo</span>
+                    <span className="font-medium text-foreground">{t('settings.dialogs.localStep2')}</span>
                     <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 font-mono text-xs">
                       <span className="flex-1">ollama pull llama3.2</span>
                       <button
                         type="button"
                         onClick={() => copyCmd('ollama pull llama3.2')}
                         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Copiar comando"
+                        aria-label={t('settings.dialogs.copyCmd')}
                       >
                         {copiedCmd === 'ollama pull llama3.2'
                           ? <Check className="h-3.5 w-3.5 text-green-500" />
@@ -452,15 +455,15 @@ export function SettingsPage() {
 
                   {/* Paso 3 */}
                   <li className="flex flex-col gap-1">
-                    <span className="font-medium text-foreground">3. Arrancar el proxy local</span>
-                    <p className="text-xs text-muted-foreground">En el directorio del proyecto JobTaylor:</p>
+                    <span className="font-medium text-foreground">{t('settings.dialogs.localStep3')}</span>
+                    <p className="text-xs text-muted-foreground">{t('settings.dialogs.localStep3Hint')}</p>
                     <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 font-mono text-xs">
                       <span className="flex-1">npm run proxy</span>
                       <button
                         type="button"
                         onClick={() => copyCmd('npm run proxy')}
                         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Copiar comando"
+                        aria-label={t('settings.dialogs.copyCmd')}
                       >
                         {copiedCmd === 'npm run proxy'
                           ? <Check className="h-3.5 w-3.5 text-green-500" />
@@ -468,7 +471,7 @@ export function SettingsPage() {
                       </button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Deja esta terminal abierta mientras uses JobTaylor con IA local.
+                      {t('settings.dialogs.localStep3Note')}
                     </p>
                   </li>
                 </ol>
@@ -477,10 +480,10 @@ export function SettingsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => update({ aiMode: 'cloud' })}>
-              Cancelar (usar Cloud)
+              {t('settings.dialogs.cancelUseCloud')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmLocal}>
-              Entendido, usar Local
+              {t('settings.dialogs.useLocal')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

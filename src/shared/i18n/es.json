@@ -1,0 +1,262 @@
+{
+  "nav": {
+    "search": "Buscar",
+    "cv": "CV Base",
+    "history": "Historial",
+    "settings": "Ajustes"
+  },
+  "theme": {
+    "switchToLight": "Cambiar a modo claro",
+    "switchToDark": "Cambiar a modo oscuro",
+    "lightMode": "Modo claro",
+    "darkMode": "Modo oscuro"
+  },
+  "auth": {
+    "signIn": "Inicia sesión en tu cuenta",
+    "createAccount": "Crea tu cuenta",
+    "accountCreated": "¡Cuenta creada!",
+    "canSignIn": "Ya puedes iniciar sesión con tu nueva cuenta.",
+    "signInButton": "Iniciar sesión",
+    "registerButton": "Crear cuenta",
+    "noAccount": "¿No tienes cuenta?",
+    "hasAccount": "¿Ya tienes cuenta?",
+    "register": "Regístrate",
+    "signInLink": "Inicia sesión",
+    "loading": "Cargando…",
+    "fullName": "Nombre completo",
+    "email": "Email",
+    "invalidEmail": "Introduce un email válido.",
+    "passwordMismatch": "Las contraseñas no coinciden.",
+    "repeatPassword": "Repite la contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "tooManyAttempts": "Demasiados intentos fallidos. Espera {{seconds}} segundos antes de intentarlo de nuevo.",
+    "remainingAttempts_one": "{{count}} intento restante antes del bloqueo temporal.",
+    "remainingAttempts_other": "{{count}} intentos restantes antes del bloqueo temporal."
+  },
+  "search": {
+    "loading": "Cargando…",
+    "error": "Error",
+    "results": "{{count}} resultados",
+    "sortByScore": "Puntuación",
+    "sortByDate": "Fecha",
+    "noMoreResults": "No hay más resultados",
+    "errorTitle": "Error al cargar ofertas",
+    "noResults": "Sin resultados",
+    "noResultsDesc": "Prueba a ajustar los filtros o la búsqueda.",
+    "clearFilters": "Limpiar filtros",
+    "retry": "Reintentar",
+    "close": "Cerrar"
+  },
+  "filter": {
+    "placeholder": "Buscar por cargo, título o tecnología...",
+    "search": "Buscar",
+    "location": "Ubicación",
+    "noLocations": "Sin resultados cargados",
+    "allModes": "Todas",
+    "remoteOnly": "Solo remoto",
+    "clear": "Limpiar",
+    "workMode": {
+      "Remote": "Remoto",
+      "Hybrid": "Híbrido",
+      "On-site": "Presencial"
+    }
+  },
+  "jobCard": {
+    "save": "Guardar oferta",
+    "unsave": "Dejar de guardar",
+    "openOriginal": "Abrir oferta original"
+  },
+  "jobDetail": {
+    "selectJob": "Selecciona una oferta",
+    "selectJobDesc": "Haz clic en un resultado para ver los detalles aquí",
+    "calculating": "Calculando…",
+    "viewOffer": "Ver oferta",
+    "description": "Descripción",
+    "noDescription": "Sin descripción disponible",
+    "noDescriptionDesc": "Abre la oferta original para ver el detalle completo.",
+    "techStack": "Tecnologías detectadas",
+    "gaps": "Brechas detectadas",
+    "suggestions": "Sugerencias",
+    "generate": "Generar CV adaptado",
+    "regenerate": "Regenerar CV",
+    "generating": "Generando…",
+    "queued": "En cola…",
+    "export": "Exportar {{format}}",
+    "exporting": "Exportando…",
+    "save": "Guardar",
+    "saved": "Guardada",
+    "generated": "CV generado",
+    "exported": "CV exportado"
+  },
+  "history": {
+    "title": "Historial",
+    "subtitle": "Seguimiento de ofertas guardadas y CVs generados",
+    "searchPlaceholder": "Buscar historial...",
+    "allStatus": "Todos",
+    "allRegions": "Todas las regiones",
+    "clear": "Limpiar",
+    "loading": "Cargando…",
+    "noHistory": "Sin historial",
+    "noHistoryDesc": "Guarda una oferta desde la página de búsqueda para empezar a rastrearla aquí.",
+    "noEntries": "Sin resultados",
+    "noEntriesDesc": "Ninguna entrada coincide con los filtros. Prueba a ajustarlos.",
+    "clearFilters": "Limpiar filtros",
+    "columns": {
+      "jobTitle": "Puesto",
+      "company": "Empresa",
+      "region": "Región",
+      "status": "Estado",
+      "created": "Creado",
+      "exported": "Exportado"
+    },
+    "status": {
+      "all": "Todos",
+      "saved": "Guardada",
+      "generated": "Generado",
+      "exported": "Exportado",
+      "queued": "En cola",
+      "generating": "Generando"
+    },
+    "viewJob": "Ver oferta",
+    "download": "Descargar",
+    "delete": "Eliminar",
+    "deleteTitle": "¿Eliminar entrada?",
+    "deleteDesc": "Se eliminará todo el historial de {{title}} en {{company}}. Tendrás que volver a guardar y generar el CV si cambias de opinión.",
+    "deleteConfirm": "Sí, eliminar",
+    "deleteCancel": "No"
+  },
+  "cv": {
+    "loading": "Cargando…",
+    "export": "Exportar {{format}}",
+    "tabs": {
+      "editor": "Editor",
+      "preview": "Vista previa",
+      "upload": "Subir"
+    },
+    "saving": "Guardando…",
+    "exporting": "Exportando…",
+    "saved": "Guardado ✓",
+    "done": "Listo ✓",
+    "newCv": "Nuevo CV",
+    "backLabel": "Volver a CVs",
+    "sections": {
+      "personalInfo": "Información personal",
+      "summary": "Resumen",
+      "experience": "Experiencia",
+      "education": "Educación",
+      "skills": "Habilidades",
+      "languages": "Idiomas",
+      "links": "Enlaces"
+    },
+    "fields": {
+      "fullName": "Nombre completo *",
+      "email": "Email *",
+      "phone": "Teléfono",
+      "location": "Ubicación",
+      "professionalTitle": "Título profesional",
+      "summaryPlaceholder": "Escribe un resumen profesional...",
+      "jobTitle": "Puesto de trabajo",
+      "company": "Empresa",
+      "startDate": "Inicio (AAAA-MM)",
+      "endDate": "Fin (AAAA-MM o Presente)",
+      "locationOptional": "Ubicación (opcional)",
+      "bulletPoints": "Un punto por línea...",
+      "technologies": "Tecnologías (separadas por coma)",
+      "degree": "Titulación",
+      "institution": "Institución",
+      "details": "Detalles (opcional)",
+      "addSkill": "Añade una habilidad y pulsa Enter...",
+      "language": "Idioma",
+      "level": "Nivel (ej. C1, Nativo)",
+      "linkLabel": "Etiqueta (ej. LinkedIn)",
+      "linkUrl": "https://..."
+    },
+    "add": "Añadir",
+    "remove": {
+      "experience": "Eliminar experiencia",
+      "education": "Eliminar educación",
+      "language": "Eliminar idioma",
+      "link": "Eliminar enlace",
+      "file": "Eliminar archivo"
+    },
+    "empty": {
+      "experience": "Sin experiencia añadida",
+      "education": "Sin estudios añadidos",
+      "languages": "Sin idiomas añadidos",
+      "links": "Sin enlaces añadidos"
+    },
+    "upload": {
+      "dropzone": "Arrastra tu CV aquí o haz clic para subir",
+      "formats": "Compatible con TXT, PDF, DOCX",
+      "or": "o",
+      "pasteLabel": "Pega el texto de tu CV",
+      "pastePlaceholder": "Pega aquí el texto completo de tu CV…",
+      "parse": "Parsear e importar",
+      "parsing": "Analizando con IA…",
+      "hint": "Ollama analizará tu CV y rellenará el Editor. Revisa y ajusta antes de guardar.",
+      "pasteFirst": "Pega o sube el texto de tu CV antes de parsear."
+    },
+    "preview": {
+      "summary": "Resumen",
+      "experience": "Experiencia",
+      "education": "Educación",
+      "skills": "Habilidades",
+      "languages": "Idiomas",
+      "present": "Presente"
+    }
+  },
+  "settings": {
+    "title": "Ajustes",
+    "subtitle": "Configura tus preferencias de JobTaylor",
+    "aiMode": {
+      "title": "Modo de IA",
+      "desc": "Elige cómo se procesa tu CV. El modo local mantiene todos los datos en tu dispositivo.",
+      "local": "Local",
+      "localDesc": "Procesa en tu dispositivo. Más lento pero completamente privado.",
+      "cloud": "Cloud",
+      "cloudDesc": "Resultados más rápidos. Los datos se envían a una API externa."
+    },
+    "outputLanguage": {
+      "title": "Idioma de salida",
+      "desc": "Idioma utilizado para el contenido del CV generado y la interfaz"
+    },
+    "template": {
+      "title": "Plantilla de CV",
+      "desc": "Estilo visual para los CVs exportados"
+    },
+    "strictness": {
+      "title": "Nivel de fidelidad",
+      "desc": "Qué tan fiel debe ser el CV adaptado a tu experiencia original. Valores más altos evitan licencias creativas.",
+      "creative": "Creativo",
+      "strict": "Estricto"
+    },
+    "exportFormat": {
+      "title": "Formato de exportación",
+      "desc": "Formato por defecto al exportar CVs adaptados"
+    },
+    "photo": {
+      "title": "Foto de perfil",
+      "desc": "Foto opcional incluida en los CVs exportados. Almacenada localmente en tu dispositivo.",
+      "remove": "Eliminar foto",
+      "noPhoto": "Sin foto subida",
+      "upload": "Subir foto"
+    },
+    "dialogs": {
+      "cloudTitle": "¿Cambiar a procesamiento en la nube?",
+      "cloudDesc": "El modo Cloud envía el contenido de tu CV y las ofertas de empleo a un servicio de IA externo. Obtendrás resultados más rápidos y de mayor calidad, pero tus datos saldrán de tu dispositivo. Asegúrate de que estás cómodo con esto antes de continuar.",
+      "keepLocal": "Mantener Local",
+      "switchCloud": "Cambiar a Cloud",
+      "localTitle": "Configurar IA Local (Ollama)",
+      "localDesc": "Para usar IA local necesitas instalar Ollama y arrancar el proxy de JobTaylor. Todo el procesamiento ocurre en tu dispositivo — ningún dato sale a internet.",
+      "localStep1": "1. Instalar Ollama",
+      "localStep2": "2. Descargar el modelo",
+      "localStep3": "3. Arrancar el proxy local",
+      "localStep3Hint": "En el directorio del proyecto JobTaylor:",
+      "localStep3Note": "Deja esta terminal abierta mientras uses JobTaylor con IA local.",
+      "cancelUseCloud": "Cancelar (usar Cloud)",
+      "useLocal": "Entendido, usar Local",
+      "copyCmd": "Copiar comando"
+    }
+  },
+  "logout": "Cerrar sesión"
+}

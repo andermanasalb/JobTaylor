@@ -131,7 +131,13 @@ export function GenerationQueueProvider({ children }: { children: ReactNode }) {
       const jobPosting = searchListingToJobPosting(jobEntry.job)
 
       const client = deps.aiMode === 'local'
-        ? new OllamaAiClient(deps.strictness, jobEntry.job.description ?? undefined)
+        ? (() => {
+            const rawSettings = localStorage.getItem('jobtaylor-settings')
+            const outputLanguage: string = rawSettings
+              ? (JSON.parse(rawSettings).outputLanguage ?? 'ES')
+              : 'ES'
+            return new OllamaAiClient(deps.strictness, jobEntry.job.description ?? undefined, outputLanguage)
+          })()
         : deps.aiClient
 
       const { tailoredData, gaps, suggestions } = await client.tailorCv(baseCv, jobPosting)

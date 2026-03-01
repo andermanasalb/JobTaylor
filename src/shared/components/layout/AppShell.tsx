@@ -1,19 +1,13 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Search, FileText, History, Settings, Scissors, Menu, X, LogOut, Sun, Moon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/shared/components/ui/button'
 import { useTheme } from '@/shared/context/ThemeContext'
 import { useAuth } from '@/features/auth/ui/context/AuthContext'
 import { useAuthRepository } from '@/app/AppDepsContext'
 
-
-const navItems = [
-  { to: '/search', label: 'Search', icon: Search },
-  { to: '/cv', label: 'CV Base', icon: FileText },
-  { to: '/history', label: 'History', icon: History },
-  { to: '/settings', label: 'Settings', icon: Settings },
-]
 
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -22,6 +16,14 @@ export function AppShell() {
   const { resolvedTheme, setTheme } = useTheme()
   const { session } = useAuth()
   const authRepository = useAuthRepository()
+  const { t } = useTranslation()
+
+  const navItems = [
+    { to: '/search', label: t('nav.search'), icon: Search },
+    { to: '/cv', label: t('nav.cv'), icon: FileText },
+    { to: '/history', label: t('nav.history'), icon: History },
+    { to: '/settings', label: t('nav.settings'), icon: Settings },
+  ]
 
   function toggleTheme() {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
@@ -94,7 +96,7 @@ export function AppShell() {
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={toggleTheme}
-              aria-label={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={resolvedTheme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
             >
               {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -103,7 +105,7 @@ export function AppShell() {
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={handleLogout}
-              aria-label="Cerrar sesión"
+              aria-label={t('logout')}
             >
               <LogOut className="h-4 w-4" />
             </Button>
@@ -179,8 +181,8 @@ export function AppShell() {
                   onClick={toggleTheme}
                 >
                   {resolvedTheme === 'dark'
-                    ? <><Sun className="h-4 w-4 shrink-0" /> Light mode</>
-                    : <><Moon className="h-4 w-4 shrink-0" /> Dark mode</>
+                    ? <><Sun className="h-4 w-4 shrink-0" /> {t('theme.lightMode')}</>
+                    : <><Moon className="h-4 w-4 shrink-0" /> {t('theme.darkMode')}</>
                   }
                 </Button>
               </div>

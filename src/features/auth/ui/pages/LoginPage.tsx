@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Scissors, Mail, Loader2, User, Sun, Moon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { useAuthRepository } from '@/app/AppDepsContext'
@@ -24,6 +25,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { resolvedTheme, setTheme } = useTheme()
+  const { t } = useTranslation()
 
   // Where to redirect after successful login (supports returnTo via router state)
   const from = (location.state as { from?: string } | null)?.from ?? '/search'
@@ -115,7 +117,7 @@ export function LoginPage() {
       <button
         type="button"
         onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-        aria-label={resolvedTheme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        aria-label={resolvedTheme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
         className="fixed bottom-4 left-4 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground transition-colors"
       >
         {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -129,7 +131,7 @@ export function LoginPage() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">JobTaylor</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {mode === 'login' ? 'Inicia sesión en tu cuenta' : 'Crea tu cuenta'}
+            {mode === 'login' ? t('auth.signIn') : t('auth.createAccount')}
           </p>
         </div>
 
@@ -137,10 +139,10 @@ export function LoginPage() {
         {registered ? (
           <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 p-4 text-center">
             <p className="text-sm font-medium text-green-800 dark:text-green-300">
-              ¡Cuenta creada!
+              {t('auth.accountCreated')}
             </p>
             <p className="text-xs text-green-700 dark:text-green-400 mt-1">
-              Ya puedes iniciar sesión con tu nueva cuenta.
+              {t('auth.canSignIn')}
             </p>
             <Button
               variant="ghost"
@@ -148,7 +150,7 @@ export function LoginPage() {
               className="mt-3 text-xs"
               onClick={() => { setMode('login'); setRegistered(false) }}
             >
-              Iniciar sesión
+              {t('auth.signInButton')}
             </Button>
           </div>
         ) : (
@@ -160,13 +162,13 @@ export function LoginPage() {
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Nombre completo"
+                   placeholder={t('auth.fullName')}
                   value={name}
                   onChange={e => setName(e.target.value)}
                   className="pl-9"
                   required
                   autoComplete="name"
-                  aria-label="Nombre completo"
+                  aria-label={t('auth.fullName')}
                   disabled={disabled}
                 />
               </div>
@@ -190,7 +192,7 @@ export function LoginPage() {
                 />
               </div>
               {email.length > 0 && !emailValid && (
-                <p className="text-xs text-destructive pl-1">Introduce un email válido.</p>
+                <p className="text-xs text-destructive pl-1">{t('auth.invalidEmail')}</p>
               )}
             </div>
 
@@ -210,12 +212,12 @@ export function LoginPage() {
                   value={confirmPassword}
                   onChange={setConfirmPassword}
                   autoComplete="new-password"
-                  placeholder="Repite la contraseña"
-                  ariaLabel="Confirmar contraseña"
+                  placeholder={t('auth.repeatPassword')}
+                  ariaLabel={t('auth.confirmPassword')}
                   disabled={disabled}
                 />
                 {confirmPassword.length > 0 && !passwordsMatch && (
-                  <p className="text-xs text-destructive pl-1">Las contraseñas no coinciden.</p>
+                  <p className="text-xs text-destructive pl-1">{t('auth.passwordMismatch')}</p>
                 )}
               </div>
             )}
@@ -223,7 +225,7 @@ export function LoginPage() {
             {/* Lockout message */}
             {isLocked && (
               <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive text-center">
-                Demasiados intentos fallidos. Espera {LOCKOUT_SECONDS} segundos antes de intentarlo de nuevo.
+                {t('auth.tooManyAttempts', { seconds: LOCKOUT_SECONDS })}
               </div>
             )}
 
@@ -231,19 +233,19 @@ export function LoginPage() {
             {error && !isLocked && (
               <div className="flex flex-col gap-0.5">
                 <p className="text-xs text-destructive text-center">{error}</p>
-                {mode === 'login' && attempts > 0 && attempts < MAX_ATTEMPTS && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    {remainingAttempts} intento{remainingAttempts !== 1 ? 's' : ''} restante{remainingAttempts !== 1 ? 's' : ''} antes del bloqueo temporal.
-                  </p>
-                )}
+                  {mode === 'login' && attempts > 0 && attempts < MAX_ATTEMPTS && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      {t('auth.remainingAttempts', { count: remainingAttempts })}
+                    </p>
+                  )}
               </div>
             )}
 
             {/* Submit */}
             <Button type="submit" className="w-full" disabled={!canSubmit}>
               {loading
-                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cargando…</>
-                : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'
+                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('auth.loading')}</>
+                : mode === 'login' ? t('auth.signInButton') : t('auth.registerButton')
               }
             </Button>
 
@@ -251,16 +253,16 @@ export function LoginPage() {
             <p className="text-center text-xs text-muted-foreground">
               {mode === 'login' ? (
                 <>
-                  ¿No tienes cuenta?{' '}
+                  {t('auth.noAccount')}{' '}
                   <button type="button" onClick={toggleMode} className="font-medium text-primary hover:underline">
-                    Regístrate
+                    {t('auth.register')}
                   </button>
                 </>
               ) : (
                 <>
-                  ¿Ya tienes cuenta?{' '}
+                  {t('auth.hasAccount')}{' '}
                   <button type="button" onClick={toggleMode} className="font-medium text-primary hover:underline">
-                    Inicia sesión
+                    {t('auth.signInLink')}
                   </button>
                 </>
               )}

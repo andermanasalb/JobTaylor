@@ -5,6 +5,7 @@ import { router } from '@/app/routes/router'
 import { AppDepsProvider } from '@/app/AppDepsContext'
 import { ThemeProvider } from '@/shared/context/ThemeContext'
 import { GenerationQueueProvider } from '@/shared/context/GenerationQueueContext'
+import '@/shared/i18n/i18n'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(

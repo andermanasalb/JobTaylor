@@ -1,4 +1,5 @@
 import { Search, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Input } from '@/shared/components/ui/input'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -20,11 +21,6 @@ import { Checkbox } from '@/shared/components/ui/checkbox'
 import type { WorkMode } from '../types/SearchListing'
 
 const WORK_MODES: WorkMode[] = ['Remote', 'Hybrid', 'On-site']
-const WORK_MODE_LABELS: Record<WorkMode, string> = {
-  'Remote': 'Remoto',
-  'Hybrid': 'Híbrido',
-  'On-site': 'Presencial',
-}
 
 interface FilterBarProps {
   query: string
@@ -54,6 +50,7 @@ export function FilterBar({
   onClear,
   onSearch,
 }: FilterBarProps) {
+  const { t } = useTranslation()
   const hasFilters = query || selectedLocations.length > 0 || remoteOnly || workMode !== 'all'
 
   function toggleLocation(loc: string) {
@@ -72,7 +69,7 @@ export function FilterBar({
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Buscar por cargo, titulo o tecnologia..."
+            placeholder={t('filter.placeholder')}
             value={query}
             onChange={e => onQueryChange(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && onSearch?.()}
@@ -81,7 +78,7 @@ export function FilterBar({
         </div>
         {onSearch && (
           <Button size="sm" className="h-9 px-3 text-xs" onClick={onSearch}>
-            Buscar
+            {t('filter.search')}
           </Button>
         )}
       </div>
@@ -92,7 +89,7 @@ export function FilterBar({
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 text-xs font-normal">
-              Ubicación
+              {t('filter.location')}
               {selectedLocations.length > 0 && (
                 <Badge variant="secondary" className="ml-1.5 h-4 min-w-4 px-1 text-[10px]">
                   {selectedLocations.length}
@@ -102,7 +99,7 @@ export function FilterBar({
           </PopoverTrigger>
           <PopoverContent className="w-64 p-3" align="start">
             {availableLocations.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Sin resultados cargados</p>
+              <p className="text-xs text-muted-foreground">{t('filter.noLocations')}</p>
             ) : (
               <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
                 {availableLocations.map(loc => (
@@ -128,9 +125,9 @@ export function FilterBar({
             <SelectValue placeholder="Modalidad" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas</SelectItem>
+            <SelectItem value="all">{t('filter.allModes')}</SelectItem>
             {WORK_MODES.map(wm => (
-              <SelectItem key={wm} value={wm}>{WORK_MODE_LABELS[wm]}</SelectItem>
+              <SelectItem key={wm} value={wm}>{t(`filter.workMode.${wm}`)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -144,7 +141,7 @@ export function FilterBar({
             className="scale-75"
           />
           <Label htmlFor="remote-toggle" className="text-xs cursor-pointer">
-            Solo remoto
+            {t('filter.remoteOnly')}
           </Label>
         </div>
 
@@ -157,7 +154,7 @@ export function FilterBar({
             onClick={onClear}
           >
             <X className="h-3 w-3 mr-1" />
-            Limpiar
+            {t('filter.clear')}
           </Button>
         )}
       </div>

@@ -218,10 +218,15 @@ Devuelve SOLO un número entero del 0 al 100 representando el % de compatibilida
 // Genera un CV adaptado a la oferta respetando los guardrails
 // ---------------------------------------------------------------------------
 app.post('/tailor', async (req, res) => {
-  const { cv, jobTitle, jobDescription, enrichedDescription, strictness = 70 } = req.body
+  const { cv, jobTitle, jobDescription, enrichedDescription, strictness = 70, language = 'ES' } = req.body
   if (!cv || !jobTitle) {
     return res.status(400).json({ error: 'cv y jobTitle son obligatorios' })
   }
+
+  // Instrucción de idioma de salida
+  const languageInstruction = language === 'EN'
+    ? 'Write the entire tailored CV in English. All fields (summary, job descriptions, bullet points, skills, etc.) must be in English.'
+    : 'Escribe el CV adaptado en español. Todos los campos (resumen, descripciones de trabajo, puntos, habilidades, etc.) deben estar en español.'
 
   // Instrucción de creatividad basada en strictness (0=creativo, 100=estricto)
   const creativityInstruction = strictness >= 80
@@ -241,6 +246,8 @@ GUARDRAILS OBLIGATORIOS (nunca los ignores):
 - Si la oferta pide algo que el candidato no tiene, inclúyelo en "gaps" pero NO lo añadas al CV adaptado.
 
 NIVEL DE ADAPTACIÓN: ${creativityInstruction}
+
+IDIOMA DE SALIDA: ${languageInstruction}
 
 CV ORIGINAL (JSON):
 ${cvJson}

@@ -12,10 +12,12 @@ const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
 export class OllamaAiClient implements AiClient {
   private strictness: number
   private enrichedDescription: string | undefined
+  private language: string
 
-  constructor(strictness = 70, enrichedDescription?: string) {
+  constructor(strictness = 70, enrichedDescription?: string, language = 'ES') {
     this.strictness = strictness
     this.enrichedDescription = enrichedDescription
+    this.language = language
   }
 
   async tailorCv(baseCv: BaseCv, jobPosting: JobPosting): Promise<AiTailorResult> {
@@ -28,6 +30,7 @@ export class OllamaAiClient implements AiClient {
         jobDescription: jobPosting.description,
         enrichedDescription: this.enrichedDescription,
         strictness: this.strictness,
+        language: this.language,
       }),
     })
 

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2, Clock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
 import { listHistoryEntries } from '@/features/history/application/usecases/ListHistoryEntries'
 import { updateHistoryStatus } from '@/features/history/application/usecases/UpdateHistoryStatus'
@@ -34,13 +35,10 @@ import {
   AlertDialogTrigger,
 } from '@/shared/components/ui/alert-dialog'
 import { EmptyState } from '@/features/job-postings/ui/components/EmptyState'
-import { mockListings } from '@/features/job-postings/ui/mock/searchMock'
 import type { TailoredCv } from '@/features/tailoring/domain/TailoredCv'
-import { listBaseCvs } from '@/features/cv-base/application/usecases/ListBaseCvs'
 import { exportTailoredCv } from '@/infra/export/exportTailoredCv'
 import { useSettings } from '@/features/settings/ui/hooks/useSettings'
 import { usePhoto } from '@/features/settings/ui/hooks/usePhoto'
-import { searchListingToJobPosting } from '@/features/job-postings/ui/utils/searchListingAdapter'
 import { useGenerationQueue } from '@/shared/context/GenerationQueueContext'
 import { cn } from '@/lib/utils'
 
@@ -51,11 +49,12 @@ import { cn } from '@/lib/utils'
 type DisplayStatus = HistoryStatus | 'pending' | 'generating'
 
 function StatusPill({ status }: { status: DisplayStatus }) {
+  const { t } = useTranslation()
   if (status === 'pending') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
         <Clock className="h-3 w-3" />
-        En cola
+        {t('history.status.queued')}
       </span>
     )
   }
@@ -63,28 +62,28 @@ function StatusPill({ status }: { status: DisplayStatus }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary">
         <Loader2 className="h-3 w-3 animate-spin" />
-        Generando
+        {t('history.status.generating')}
       </span>
     )
   }
   if (status === 'generated') {
     return (
       <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', 'bg-primary/10 text-primary')}>
-        CV generado
+        {t('history.status.generated')}
       </span>
     )
   }
   if (status === 'exported') {
     return (
       <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', 'bg-green-500/15 text-green-700 dark:text-green-400')}>
-        CV exportado
+        {t('history.status.exported')}
       </span>
     )
   }
   // saved
   return (
     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
-      Guardada
+      {t('history.status.saved')}
     </span>
   )
 }
@@ -104,10 +103,11 @@ function formatDate(date: Date): string {
 const REGIONS = ['País Vasco', 'Madrid', 'Barcelona', 'Remote (EU)'] as const
 
 export function HistoryPage() {
-  const { historyRepository, cvRepository, aiClient, tailoredCvRepository } = useAppDeps()
+  const { historyRepository, tailoredCvRepository } = useAppDeps()
   const settings = useSettings()
   const photo = usePhoto()
   const generationQueue = useGenerationQueue()
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -176,37 +176,11 @@ export function HistoryPage() {
 
   async function handleDownload(entry: HistoryEntry) {
     if (downloadingId) return
-    const listing = mockListings.find(j => j.id === entry.jobId)
-    if (!listing) return
     setDownloadingId(entry.id)
     try {
-      // Try to use a previously generated and persisted tailored CV first
       const cached = await tailoredCvRepository.findByJobPostingId(entry.jobId)
-      const existing = cached[0] ?? null
-
-      let tailored: TailoredCv
-      if (existing) {
-        tailored = existing
-      } else {
-        // Fall back to re-generating via AI
-        const cvs = await listBaseCvs(cvRepository)
-        if (cvs.length === 0) return
-        const baseCv = cvs[0]
-        const jobPosting = searchListingToJobPosting(listing)
-        const { tailoredData, gaps, suggestions } = await aiClient.tailorCv(baseCv, jobPosting)
-        tailored = {
-          id: crypto.randomUUID(),
-          baseCvId: baseCv.id,
-          jobPostingId: listing.id,
-          tailoredData,
-          gaps,
-          suggestions,
-          guardrailsApplied: true,
-          createdAt: new Date(),
-        }
-        // Persist so future downloads skip re-generation
-        await tailoredCvRepository.save(tailored)
-      }
+      const tailored: TailoredCv | null = cached[0] ?? null
+      if (!tailored) return
 
       await exportTailoredCv(tailored, {
         format: settings.exportFormat,
@@ -231,9 +205,9 @@ export function HistoryPage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="border-b border-border px-4 py-4 md:px-6">
-        <h1 className="text-lg font-semibold text-foreground">History</h1>
+        <h1 className="text-lg font-semibold text-foreground">{t('history.title')}</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Track your saved postings and generated CV versions
+          {t('history.subtitle')}
         </p>
       </div>
 
@@ -244,7 +218,7 @@ export function HistoryPage() {
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search history..."
+              placeholder={t('history.searchPlaceholder')}
               value={query}
               onChange={e => setQuery(e.target.value)}
               className="pl-9 h-8 text-xs"
@@ -259,10 +233,10 @@ export function HistoryPage() {
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
-              <SelectItem value="saved">Saved</SelectItem>
-              <SelectItem value="generated">Generated</SelectItem>
-              <SelectItem value="exported">Exported</SelectItem>
+              <SelectItem value="all">{t('history.allStatus')}</SelectItem>
+              <SelectItem value="saved">{t('history.status.saved')}</SelectItem>
+              <SelectItem value="generated">{t('history.status.generated')}</SelectItem>
+              <SelectItem value="exported">{t('history.status.exported')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -274,7 +248,7 @@ export function HistoryPage() {
               <SelectValue placeholder="Region" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All regions</SelectItem>
+              <SelectItem value="all">{t('history.allRegions')}</SelectItem>
               {REGIONS.map(r => (
                 <SelectItem key={r} value={r}>{r}</SelectItem>
               ))}
@@ -289,7 +263,7 @@ export function HistoryPage() {
               onClick={clearFilters}
             >
               <X className="h-3 w-3 mr-1" />
-              Clear
+              {t('history.clear')}
             </Button>
           )}
         </div>
@@ -299,21 +273,21 @@ export function HistoryPage() {
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex justify-center py-16">
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <p className="text-sm text-muted-foreground">{t('history.loading')}</p>
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={FileText}
-            title={entries.length === 0 ? 'No history yet' : 'No entries found'}
+            title={entries.length === 0 ? t('history.noHistory') : t('history.noEntries')}
             description={
               entries.length === 0
-                ? 'Save a job from the Search page to start tracking it here.'
-                : 'No entries match your filters. Try adjusting them.'
+                ? t('history.noHistoryDesc')
+                : t('history.noEntriesDesc')
             }
           >
             {hasFilters && (
               <Button variant="outline" size="sm" onClick={clearFilters}>
-                Clear filters
+                {t('history.clearFilters')}
               </Button>
             )}
           </EmptyState>
@@ -324,12 +298,12 @@ export function HistoryPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">Job title</TableHead>
-                    <TableHead className="text-xs">Company</TableHead>
-                    <TableHead className="text-xs">Region</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs">Created</TableHead>
-                    <TableHead className="text-xs">Exported</TableHead>
+                    <TableHead className="text-xs">{t('history.columns.jobTitle')}</TableHead>
+                     <TableHead className="text-xs">{t('history.columns.company')}</TableHead>
+                     <TableHead className="text-xs">{t('history.columns.region')}</TableHead>
+                     <TableHead className="text-xs">{t('history.columns.status')}</TableHead>
+                     <TableHead className="text-xs">{t('history.columns.created')}</TableHead>
+                     <TableHead className="text-xs">{t('history.columns.exported')}</TableHead>
                     <TableHead className="w-8"><span className="sr-only">View</span></TableHead>
                     <TableHead className="w-8"><span className="sr-only">Download</span></TableHead>
                     <TableHead className="w-8"><span className="sr-only">Delete</span></TableHead>
@@ -370,21 +344,21 @@ export function HistoryPage() {
                         </TableCell>
                         <TableCell className="w-8">
                           <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                            <Link to="/search" state={{ jobId: entry.jobId }} aria-label="View job">
+                           <Link to="/search" state={{ jobId: entry.jobId }} aria-label={t('history.viewJob')}>
                               <ExternalLink className="h-3.5 w-3.5" />
                             </Link>
                           </Button>
                         </TableCell>
-                        <TableCell className="w-8">
-                          {entry.status !== 'saved' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              aria-label="Download"
-                              disabled={downloadingId === entry.id}
-                              onClick={() => handleDownload(entry)}
-                            >
+                         <TableCell className="w-8">
+                           {entry.status !== 'saved' && (
+                             <Button
+                               variant="ghost"
+                               size="icon"
+                               className="h-7 w-7"
+                               aria-label={t('history.download')}
+                               disabled={downloadingId === entry.id}
+                               onClick={() => handleDownload(entry)}
+                             >
                               {downloadingId === entry.id
                                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 : <Download className="h-3.5 w-3.5" />
@@ -398,28 +372,28 @@ export function HistoryPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                aria-label="Delete"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent size="sm">
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>¿Eliminar entrada?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Se eliminará todo el historial de <strong>{entry.jobTitle}</strong> en {entry.company}. Tendrás que volver a guardar y generar el CV si cambias de opinión.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>No</AlertDialogCancel>
-                                <AlertDialogAction
-                                  variant="destructive"
-                                  onClick={() => handleDelete(entry)}
-                                >
-                                  Sí, eliminar
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
+                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                 aria-label={t('history.delete')}
+                               >
+                                 <Trash2 className="h-3.5 w-3.5" />
+                               </Button>
+                             </AlertDialogTrigger>
+                             <AlertDialogContent size="sm">
+                               <AlertDialogHeader>
+                                 <AlertDialogTitle>{t('history.deleteTitle')}</AlertDialogTitle>
+                                 <AlertDialogDescription>
+                                   {t('history.deleteDesc', { title: entry.jobTitle, company: entry.company })}
+                                 </AlertDialogDescription>
+                               </AlertDialogHeader>
+                               <AlertDialogFooter>
+                                 <AlertDialogCancel>{t('history.deleteCancel')}</AlertDialogCancel>
+                                 <AlertDialogAction
+                                   variant="destructive"
+                                   onClick={() => handleDelete(entry)}
+                                 >
+                                   {t('history.deleteConfirm')}
+                                 </AlertDialogAction>
+                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
                         </TableCell>
@@ -466,19 +440,19 @@ export function HistoryPage() {
                       </span>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                          <Link to="/search" state={{ jobId: entry.jobId }} aria-label="View job">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        </Button>
-                        {entry.status !== 'saved' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            aria-label="Download"
-                            disabled={downloadingId === entry.id}
-                            onClick={() => handleDownload(entry)}
-                          >
+                         <Link to="/search" state={{ jobId: entry.jobId }} aria-label={t('history.viewJob')}>
+                             <ExternalLink className="h-3.5 w-3.5" />
+                           </Link>
+                         </Button>
+                         {entry.status !== 'saved' && (
+                           <Button
+                             variant="ghost"
+                             size="icon"
+                             className="h-7 w-7"
+                             aria-label={t('history.download')}
+                             disabled={downloadingId === entry.id}
+                             onClick={() => handleDownload(entry)}
+                           >
                             {downloadingId === entry.id
                               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               : <Download className="h-3.5 w-3.5" />
@@ -490,28 +464,28 @@ export function HistoryPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              aria-label="Delete"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent size="sm">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>¿Eliminar entrada?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Se eliminará todo el historial de <strong>{entry.jobTitle}</strong> en {entry.company}. Tendrás que volver a guardar y generar el CV si cambias de opinión.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>No</AlertDialogCancel>
-                              <AlertDialogAction
-                                variant="destructive"
-                                onClick={() => handleDelete(entry)}
-                              >
-                                Sí, eliminar
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
+                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                               aria-label={t('history.delete')}
+                             >
+                               <Trash2 className="h-3.5 w-3.5" />
+                             </Button>
+                           </AlertDialogTrigger>
+                           <AlertDialogContent size="sm">
+                             <AlertDialogHeader>
+                               <AlertDialogTitle>{t('history.deleteTitle')}</AlertDialogTitle>
+                               <AlertDialogDescription>
+                                 {t('history.deleteDesc', { title: entry.jobTitle, company: entry.company })}
+                               </AlertDialogDescription>
+                             </AlertDialogHeader>
+                             <AlertDialogFooter>
+                               <AlertDialogCancel>{t('history.deleteCancel')}</AlertDialogCancel>
+                               <AlertDialogAction
+                                 variant="destructive"
+                                 onClick={() => handleDelete(entry)}
+                               >
+                                 {t('history.deleteConfirm')}
+                               </AlertDialogAction>
+                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
                       </div>

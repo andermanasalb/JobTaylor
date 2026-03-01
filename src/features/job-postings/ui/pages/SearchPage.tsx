@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ArrowUpDown, Search as SearchIcon, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { SearchListing, WorkMode } from '../types/SearchListing'
@@ -41,6 +42,7 @@ export function SearchPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const generationQueue = useGenerationQueue()
+  const { t } = useTranslation()
 
   // ── Estado persistido en sessionStorage (sobrevive navegación entre páginas) ──
   const [query, setQuery] = useState<string>(() => sessionStorage.getItem('search.query') ?? '')
@@ -153,7 +155,7 @@ export function SearchPage() {
     } catch (err) {
       console.error('Job feed error:', err)
       if (page === 1) {
-        setFeedError('No se pudieron cargar las ofertas. Comprueba tu conexión o las credenciales de Adzuna.')
+        setFeedError(t('search.errorTitle'))
         setAllListings([])
       }
     } finally {
@@ -423,7 +425,7 @@ export function SearchPage() {
 
         <div className="flex items-center justify-between border-b border-border px-4 py-2">
           <span className="text-xs text-muted-foreground">
-            {isLoading ? 'Cargando…' : feedError ? 'Error' : `${filteredJobs.length} resultados`}
+            {isLoading ? t('search.loading') : feedError ? t('search.error') : `${filteredJobs.length} ${t('search.results', { count: filteredJobs.length })}`}
           </span>
           <div className="flex items-center gap-1.5">
             <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
@@ -432,8 +434,8 @@ export function SearchPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="score">Puntuacion</SelectItem>
-                <SelectItem value="date">Fecha</SelectItem>
+                <SelectItem value="score">{t('search.sortByScore')}</SelectItem>
+                <SelectItem value="date">{t('search.sortByDate')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -445,21 +447,21 @@ export function SearchPage() {
           ) : feedError ? (
             <EmptyState
               icon={SearchIcon}
-              title="Error al cargar ofertas"
+              title={t('search.errorTitle')}
               description={feedError}
             >
               <Button variant="outline" size="sm" onClick={() => fetchListings(query, 1)}>
-                Reintentar
+                {t('search.retry')}
               </Button>
             </EmptyState>
           ) : filteredJobs.length === 0 ? (
             <EmptyState
               icon={SearchIcon}
-              title="Sin resultados"
-              description="Prueba a ajustar los filtros o la busqueda."
+              title={t('search.noResults')}
+              description={t('search.noResultsDesc')}
             >
               <Button variant="outline" size="sm" onClick={clearFilters}>
-                Limpiar filtros
+                {t('search.clearFilters')}
               </Button>
             </EmptyState>
           ) : (
@@ -484,7 +486,7 @@ export function SearchPage() {
               )}
               {!hasMore && allListings.length > 0 && (
                 <p className="py-3 text-center text-xs text-muted-foreground">
-                  No hay mas resultados
+                  {t('search.noMoreResults')}
                 </p>
               )}
             </div>
@@ -527,7 +529,7 @@ export function SearchPage() {
                 onClick={() => setSelectedJob(null)}
               >
                 <X className="h-3.5 w-3.5" />
-                Cerrar
+                {t('search.close')}
               </Button>
             </div>
             <div className="h-full overflow-y-auto pb-20">

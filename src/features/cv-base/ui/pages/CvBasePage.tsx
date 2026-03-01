@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
 import { listBaseCvs } from '../../application/usecases/ListBaseCvs'
 import { saveBaseCv } from '../../application/usecases/SaveBaseCv'
@@ -15,6 +16,7 @@ export function CvBasePage() {
   const settings = useSettings()
   const photo = usePhoto()
   const { session } = useAuth()
+  const { t } = useTranslation()
 
   // undefined = still loading, null = loaded but no CV exists yet
   const [cv, setCv] = useState<BaseCv | null | undefined>(undefined)
@@ -85,7 +87,7 @@ export function CvBasePage() {
   if (cv === undefined) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">{t('cv.loading')}</p>
       </div>
     )
   }
@@ -99,7 +101,7 @@ export function CvBasePage() {
           onAutoSave={handleAutoSave}
           saving={saving}
           saveStatus={saveStatus}
-          submitLabel={`Export ${settings.exportFormat.toUpperCase()}`}
+          submitLabel={t('cv.export', { format: settings.exportFormat.toUpperCase() })}
         />
       </div>
     </div>

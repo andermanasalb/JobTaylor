@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Clock,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Separator } from '@/shared/components/ui/separator'
@@ -63,6 +64,7 @@ export function JobDetailPanel({
   onGenerate,
   onExport,
 }: JobDetailPanelProps) {
+  const { t } = useTranslation()
   if (!job) {
     return (
       <div className="flex items-center justify-center h-full text-center px-6">
@@ -70,9 +72,9 @@ export function JobDetailPanel({
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted mx-auto mb-3">
             <ExternalLink className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">Selecciona una oferta</p>
+          <p className="text-sm font-medium text-foreground">{t('jobDetail.selectJob')}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Haz click en un resultado para ver los detalles aquí
+            {t('jobDetail.selectJobDesc')}
           </p>
         </div>
       </div>
@@ -84,7 +86,7 @@ export function JobDetailPanel({
   const isGenerating = generationStatus === 'generating'
   const isPending = generationStatus === 'pending'
   const isQueued = isGenerating || isPending
-  const generateLabel = hasGenerated ? 'Regenerar CV' : 'Generar CV adaptado'
+  const generateLabel = hasGenerated ? t('jobDetail.regenerate') : t('jobDetail.generate')
   const GenerateIcon = hasGenerated ? RefreshCw : Scissors
 
   // Score a mostrar: Ollama si está disponible, sino matchScore de Adzuna
@@ -109,7 +111,7 @@ export function JobDetailPanel({
           {isScoring ? (
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-muted text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Calculando…
+              {t('jobDetail.calculating')}
             </span>
           ) : (
             <span
@@ -144,14 +146,14 @@ export function JobDetailPanel({
               className="inline-flex items-center gap-1 text-primary hover:underline"
             >
               <ExternalLink className="h-3 w-3" />
-              Ver oferta
+              {t('jobDetail.viewOffer')}
             </a>
           )}
         </div>
 
         <div className="flex flex-wrap gap-1.5 mt-3">
           <Badge variant={job.workMode === 'Remote' ? 'default' : 'secondary'}>
-            {job.workMode}
+            {t(`filter.workMode.${job.workMode}`)}
           </Badge>
           <Badge variant="outline">{job.seniority}</Badge>
           {job.tags.map(tag => (
@@ -170,7 +172,7 @@ export function JobDetailPanel({
                   : 'bg-primary/10 text-primary',
               )}
             >
-              {historyStatus === 'generated' ? 'CV generado' : 'CV exportado'}
+              {historyStatus === 'generated' ? t('jobDetail.generated') : t('jobDetail.exported')}
             </span>
           </div>
         )}
@@ -186,12 +188,12 @@ export function JobDetailPanel({
             {isGenerating ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Generando…
+                {t('jobDetail.generating')}
               </>
             ) : isPending ? (
               <>
                 <Clock className="h-3.5 w-3.5 mr-1.5" />
-                En cola…
+                {t('jobDetail.queued')}
               </>
             ) : (
               <>
@@ -212,12 +214,12 @@ export function JobDetailPanel({
               {isExporting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  Exportando…
+                  {t('jobDetail.exporting')}
                 </>
               ) : (
                 <>
                   <Download className="h-3.5 w-3.5 mr-1.5" />
-                  Exportar {exportFormat.toUpperCase()}
+                  {t('jobDetail.export', { format: exportFormat.toUpperCase() })}
                 </>
               )}
             </Button>
@@ -232,7 +234,7 @@ export function JobDetailPanel({
             <Bookmark
               className={cn('h-3.5 w-3.5 mr-1.5', isSaved && 'fill-primary text-primary')}
             />
-            {isSaved ? 'Guardada' : 'Guardar'}
+            {isSaved ? t('jobDetail.saved') : t('jobDetail.save')}
           </Button>
         </div>
       </div>
@@ -246,7 +248,7 @@ export function JobDetailPanel({
         {job.description ? (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Descripción
+              {t('jobDetail.description')}
             </h3>
             <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
               {job.description}
@@ -256,9 +258,9 @@ export function JobDetailPanel({
           <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
             <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-foreground">Sin descripción disponible</p>
+              <p className="text-sm font-medium text-foreground">{t('jobDetail.noDescription')}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Abre la oferta original para ver el detalle completo.
+                {t('jobDetail.noDescriptionDesc')}
               </p>
             </div>
           </div>
@@ -268,7 +270,7 @@ export function JobDetailPanel({
         {job.techStack.length > 0 && (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Tecnologías detectadas
+              {t('jobDetail.techStack')}
             </h3>
             <div className="flex flex-wrap gap-1.5">
               {job.techStack.map(tech => (
@@ -282,7 +284,7 @@ export function JobDetailPanel({
         {tailoredCv && tailoredCv.gaps.length > 0 && (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Brechas detectadas
+              {t('jobDetail.gaps')}
             </h3>
             <ul className="space-y-1.5">
               {tailoredCv.gaps.map((gap, i) => (
@@ -298,7 +300,7 @@ export function JobDetailPanel({
         {tailoredCv && tailoredCv.suggestions.length > 0 && (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              Sugerencias
+              {t('jobDetail.suggestions')}
             </h3>
             <ul className="space-y-1.5">
               {tailoredCv.suggestions.map((s, i) => (
