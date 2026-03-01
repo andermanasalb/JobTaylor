@@ -425,7 +425,7 @@ export function SearchPage() {
 
         <div className="flex items-center justify-between border-b border-border px-4 py-2">
           <span className="text-xs text-muted-foreground">
-            {isLoading ? t('search.loading') : feedError ? t('search.error') : `${filteredJobs.length} ${t('search.results', { count: filteredJobs.length })}`}
+            {isLoading ? t('search.loading') : feedError ? t('search.error') : t('search.results', { count: filteredJobs.length })}
           </span>
           <div className="flex items-center gap-1.5">
             <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
