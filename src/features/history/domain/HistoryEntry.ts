@@ -11,6 +11,7 @@ export interface HistoryEntry {
   jobTitle: string
   company: string
   region: string
+  url: string | null
   status: HistoryStatus
   createdAt: Date
   exportedAt: Date | null
@@ -21,6 +22,7 @@ export function createHistoryEntry(params: {
   jobTitle: string
   company: string
   region: string
+  url?: string | null
   status?: HistoryStatus
 }): HistoryEntry {
   return {
@@ -29,6 +31,7 @@ export function createHistoryEntry(params: {
     jobTitle: params.jobTitle,
     company: params.company,
     region: params.region,
+    url: params.url ?? null,
     status: params.status ?? 'saved',
     createdAt: new Date(),
     exportedAt: null,

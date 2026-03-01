@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
@@ -100,8 +99,6 @@ function formatDate(date: Date): string {
 // Page
 // ---------------------------------------------------------------------------
 
-const REGIONS = ['País Vasco', 'Madrid', 'Barcelona', 'Remote (EU)'] as const
-
 export function HistoryPage() {
   const { historyRepository, tailoredCvRepository } = useAppDeps()
   const settings = useSettings()
@@ -111,7 +108,7 @@ export function HistoryPage() {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<HistoryStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<DisplayStatus | 'all'>('all')
   const [regionFilter, setRegionFilter] = useState<string>('all')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
@@ -121,6 +118,12 @@ export function HistoryPage() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [historyRepository])
+
+  // Regiones únicas derivadas de las entradas cargadas
+  const availableRegions = useMemo(() => {
+    const regions = new Set(entries.map(e => e.region).filter(Boolean))
+    return Array.from(regions).sort()
+  }, [entries])
 
   const filtered = useMemo(() => {
     let items = [...entries]
@@ -135,7 +138,14 @@ export function HistoryPage() {
     }
 
     if (statusFilter !== 'all') {
-      items = items.filter(h => h.status === statusFilter)
+      items = items.filter(h => {
+        const queueEntry = generationQueue.jobs.get(h.jobId)
+        const effectiveStatus: DisplayStatus =
+          queueEntry?.status === 'pending' ? 'pending'
+          : queueEntry?.status === 'generating' ? 'generating'
+          : h.status
+        return effectiveStatus === statusFilter
+      })
     }
 
     if (regionFilter !== 'all') {
@@ -143,7 +153,7 @@ export function HistoryPage() {
     }
 
     return items
-  }, [entries, query, statusFilter, regionFilter])
+  }, [entries, query, statusFilter, regionFilter, generationQueue.jobs])
 
   const hasFilters = Boolean(query) || statusFilter !== 'all' || regionFilter !== 'all'
 
@@ -227,7 +237,7 @@ export function HistoryPage() {
 
           <Select
             value={statusFilter}
-            onValueChange={v => setStatusFilter(v as HistoryStatus | 'all')}
+            onValueChange={v => setStatusFilter(v as DisplayStatus | 'all')}
           >
             <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue placeholder="Status" />
@@ -235,6 +245,8 @@ export function HistoryPage() {
             <SelectContent>
               <SelectItem value="all">{t('history.allStatus')}</SelectItem>
               <SelectItem value="saved">{t('history.status.saved')}</SelectItem>
+              <SelectItem value="pending">{t('history.status.queued')}</SelectItem>
+              <SelectItem value="generating">{t('history.status.generating')}</SelectItem>
               <SelectItem value="generated">{t('history.status.generated')}</SelectItem>
               <SelectItem value="exported">{t('history.status.exported')}</SelectItem>
             </SelectContent>
@@ -249,7 +261,7 @@ export function HistoryPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t('history.allRegions')}</SelectItem>
-              {REGIONS.map(r => (
+              {availableRegions.map(r => (
                 <SelectItem key={r} value={r}>{r}</SelectItem>
               ))}
             </SelectContent>
@@ -319,13 +331,18 @@ export function HistoryPage() {
                     return (
                       <TableRow key={entry.id}>
                         <TableCell className="text-sm font-medium">
-                          <Link
-                            to="/search"
-                            state={{ jobId: entry.jobId }}
-                            className="hover:text-primary transition-colors"
-                          >
-                            {entry.jobTitle}
-                          </Link>
+                          {entry.url ? (
+                            <a
+                              href={entry.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-primary transition-colors"
+                            >
+                              {entry.jobTitle}
+                            </a>
+                          ) : (
+                            <span>{entry.jobTitle}</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {entry.company}
@@ -343,11 +360,13 @@ export function HistoryPage() {
                           {entry.exportedAt ? formatDate(entry.exportedAt) : '—'}
                         </TableCell>
                         <TableCell className="w-8">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                           <Link to="/search" state={{ jobId: entry.jobId }} aria-label={t('history.viewJob')}>
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </Link>
-                          </Button>
+                          {entry.url && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                              <a href={entry.url} target="_blank" rel="noopener noreferrer" aria-label={t('history.viewJob')}>
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            </Button>
+                          )}
                         </TableCell>
                          <TableCell className="w-8">
                            {entry.status !== 'saved' && (
@@ -419,13 +438,18 @@ export function HistoryPage() {
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div>
-                        <Link
-                          to="/search"
-                          state={{ jobId: entry.jobId }}
-                          className="text-sm font-medium text-foreground hover:text-primary transition-colors"
-                        >
-                          {entry.jobTitle}
-                        </Link>
+                        {entry.url ? (
+                          <a
+                            href={entry.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-foreground hover:text-primary transition-colors"
+                          >
+                            {entry.jobTitle}
+                          </a>
+                        ) : (
+                          <span className="text-sm font-medium text-foreground">{entry.jobTitle}</span>
+                        )}
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {entry.company} — {entry.region}
                         </p>
@@ -439,11 +463,13 @@ export function HistoryPage() {
                         {formatDate(entry.createdAt)}
                       </span>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                         <Link to="/search" state={{ jobId: entry.jobId }} aria-label={t('history.viewJob')}>
-                             <ExternalLink className="h-3.5 w-3.5" />
-                           </Link>
-                         </Button>
+                        {entry.url && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                            <a href={entry.url} target="_blank" rel="noopener noreferrer" aria-label={t('history.viewJob')}>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                        )}
                          {entry.status !== 'saved' && (
                            <Button
                              variant="ghost"

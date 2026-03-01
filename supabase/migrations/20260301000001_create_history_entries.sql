@@ -6,6 +6,7 @@ create table if not exists public.history_entries (
   job_title     text not null,
   company       text not null,
   region        text not null default '',
+  job_url       text,
   status        text not null default 'saved' check (status in ('saved', 'generated', 'exported')),
   created_at    timestamptz not null default now(),
   exported_at   timestamptz

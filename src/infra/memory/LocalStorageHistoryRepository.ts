@@ -23,6 +23,7 @@ export class LocalStorageHistoryRepository implements HistoryRepository {
         jobTitle: string
         company: string
         region: string
+        url?: string | null
         status: HistoryStatus
         createdAt: string
         exportedAt: string | null
@@ -31,6 +32,7 @@ export class LocalStorageHistoryRepository implements HistoryRepository {
       for (const item of arr) {
         map.set(item.id, {
           ...item,
+          url: item.url ?? null,
           createdAt: new Date(item.createdAt),
           exportedAt: item.exportedAt ? new Date(item.exportedAt) : null,
         })

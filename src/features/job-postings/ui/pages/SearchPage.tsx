@@ -33,6 +33,8 @@ import { useGenerationQueue } from '@/shared/context/GenerationQueueContext'
 type SortField = 'date' | 'score'
 
 const DEBOUNCE_MS = 600
+const PAGE_SIZE = 20
+const MAX_PAGES = 10 // máximo de páginas a cargar (200 ofertas)
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
 
 export function SearchPage() {
@@ -71,8 +73,9 @@ export function SearchPage() {
   })
   const [feedError, setFeedError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
+  const [apiHasMore, setApiHasMore] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
@@ -150,7 +153,7 @@ export function SearchPage() {
       } else {
         setAllListings(prev => [...prev, ...results])
       }
-      setHasMore(results.length >= 20)
+      setApiHasMore(results.length >= PAGE_SIZE && page < MAX_PAGES)
       setCurrentPage(page)
     } catch (err) {
       console.error('Job feed error:', err)
@@ -168,7 +171,8 @@ export function SearchPage() {
   function handleQueryChange(value: string) {
     setQuery(value)
     setCurrentPage(1)
-    setHasMore(true)
+    setApiHasMore(true)
+    setVisibleCount(PAGE_SIZE)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       fetchListings(value, 1)
@@ -178,7 +182,8 @@ export function SearchPage() {
   function handleSearch() {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setCurrentPage(1)
-    setHasMore(true)
+    setApiHasMore(true)
+    setVisibleCount(PAGE_SIZE)
     fetchListings(query, 1)
   }
 
@@ -243,22 +248,6 @@ export function SearchPage() {
     }
   }, [allListings])
 
-  // IntersectionObserver — carga la siguiente página cuando el sentinel es visible
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isLoading && !isLoadingMore && hasMore) {
-          fetchListings(query, currentPage + 1)
-        }
-      },
-      { threshold: 0.1 }
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [isLoading, isLoadingMore, hasMore, currentPage, query, fetchListings])
-
   // Ubicaciones únicas derivadas de los resultados actuales (ordenadas alfabéticamente)
   const availableLocations = useMemo(() => {
     const locs = new Set(allListings.map(j => j.location).filter(Boolean))
@@ -271,7 +260,7 @@ export function SearchPage() {
     setSelectedLocations(prev => prev.filter(l => availableLocations.includes(l)))
   }, [availableLocations])
 
-  // Filtros + ordenación
+  // Filtros + ordenación (sobre todos los datos cargados de la API)
   const filteredJobs = useMemo(() => {
     let results = [...allListings]
     if (selectedLocations.length > 0) {
@@ -293,6 +282,44 @@ export function SearchPage() {
     })
     return results
   }, [selectedLocations, workMode, remoteOnly, sortBy, allListings, jobScores])
+
+  // Resetear visibleCount cuando cambian los filtros client-side
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [selectedLocations, workMode, remoteOnly, sortBy])
+
+  // Jobs a renderizar (slice del conjunto filtrado)
+  const displayedJobs = filteredJobs.slice(0, visibleCount)
+
+  // hasMore: hay más items filtrados sin mostrar, O la API tiene más páginas
+  const hasMore = visibleCount < filteredJobs.length || apiHasMore
+
+  // IntersectionObserver — solo observa si el sentinel está visible
+  const [sentinelVisible, setSentinelVisible] = useState(false)
+  useEffect(() => {
+    if (!hasMore) {
+      setSentinelVisible(false)
+      return
+    }
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => { setSentinelVisible(entries[0].isIntersecting) },
+      { threshold: 0.1 }
+    )
+    observer.observe(sentinel)
+    return () => { observer.disconnect(); setSentinelVisible(false) }
+  }, [hasMore, displayedJobs.length]) // re-observar cuando cambia el DOM
+
+  // Efecto de carga — reacciona a sentinel visible, sin condiciones de timing
+  useEffect(() => {
+    if (!sentinelVisible || isLoading || isLoadingMore) return
+    if (visibleCount < filteredJobs.length) {
+      setVisibleCount(prev => prev + PAGE_SIZE)
+    } else if (apiHasMore) {
+      fetchListings(query, currentPage + 1)
+    }
+  }, [sentinelVisible, isLoading, isLoadingMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
 
   // Seleccionar job: lanza scoring on-demand con caché
   function handleSelectJob(job: SearchListing) {
@@ -333,6 +360,7 @@ export function SearchPage() {
         jobTitle: job.title,
         company: job.company,
         region: job.location,
+        url: job.url,
       })
       addHistoryEntry(historyRepository, entry).catch(console.error)
     }
@@ -356,6 +384,7 @@ export function SearchPage() {
         jobTitle: job.title,
         company: job.company,
         region: job.location,
+        url: job.url,
       })).catch(console.error)
     }
   }
@@ -401,6 +430,10 @@ export function SearchPage() {
     setSelectedLocations([])
     setWorkMode('all')
     setRemoteOnly(false)
+    setCurrentPage(1)
+    setApiHasMore(true)
+    setVisibleCount(PAGE_SIZE)
+    fetchListings(undefined, 1)
   }
 
   return (
@@ -466,7 +499,7 @@ export function SearchPage() {
             </EmptyState>
           ) : (
             <div className="flex flex-col gap-2">
-              {filteredJobs.map(job => (
+              {displayedJobs.map(job => (
                 <JobCard
                   key={job.id}
                   job={job}
@@ -477,14 +510,14 @@ export function SearchPage() {
                   onSave={handleSave}
                 />
               ))}
-              {/* Sentinel para infinite scroll */}
-              <div ref={sentinelRef} className="h-4" />
+              {/* Sentinel — solo en DOM si hay más que cargar; si no, el observer no dispara */}
+              {hasMore && <div ref={sentinelRef} className="h-4" />}
               {isLoadingMore && (
                 <div className="flex justify-center py-3">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </div>
               )}
-              {!hasMore && allListings.length > 0 && (
+              {!hasMore && filteredJobs.length > 0 && (
                 <p className="py-3 text-center text-xs text-muted-foreground">
                   {t('search.noMoreResults')}
                 </p>

@@ -10,6 +10,7 @@ interface HistoryEntryRow {
   job_title: string
   company: string
   region: string
+  job_url: string | null
   status: HistoryStatus
   created_at: string
   exported_at: string | null
@@ -22,6 +23,7 @@ function rowToDomain(row: HistoryEntryRow): HistoryEntry {
     jobTitle: row.job_title,
     company: row.company,
     region: row.region,
+    url: row.job_url,
     status: row.status,
     createdAt: new Date(row.created_at),
     exportedAt: row.exported_at ? new Date(row.exported_at) : null,
@@ -46,6 +48,7 @@ export class SupabaseHistoryRepository implements HistoryRepository {
         job_title: entry.jobTitle,
         company: entry.company,
         region: entry.region,
+        job_url: entry.url,
         status: entry.status,
         created_at: entry.createdAt.toISOString(),
         exported_at: entry.exportedAt ? entry.exportedAt.toISOString() : null,
