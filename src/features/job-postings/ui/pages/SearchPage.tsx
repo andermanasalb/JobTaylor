@@ -77,7 +77,6 @@ export function SearchPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const sentinelRef = useRef<HTMLDivElement>(null)
 
   // CV Base — solo ref, no necesitamos re-render
   const baseCvRef = useRef<BaseCv | null>(null)
@@ -294,32 +293,27 @@ export function SearchPage() {
   // hasMore: hay más items filtrados sin mostrar, O la API tiene más páginas
   const hasMore = visibleCount < filteredJobs.length || apiHasMore
 
-  // IntersectionObserver — solo observa si el sentinel está visible
-  const [sentinelVisible, setSentinelVisible] = useState(false)
+  // Scroll listener — carga más cuando el usuario llega cerca del final
   useEffect(() => {
-    if (!hasMore) {
-      setSentinelVisible(false)
-      return
-    }
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => { setSentinelVisible(entries[0].isIntersecting) },
-      { threshold: 0.1 }
-    )
-    observer.observe(sentinel)
-    return () => { observer.disconnect(); setSentinelVisible(false) }
-  }, [hasMore, displayedJobs.length]) // re-observar cuando cambia el DOM
+    const container = listScrollRef.current
+    if (!container) return
 
-  // Efecto de carga — reacciona a sentinel visible, sin condiciones de timing
-  useEffect(() => {
-    if (!sentinelVisible || isLoading || isLoadingMore) return
-    if (visibleCount < filteredJobs.length) {
-      setVisibleCount(prev => prev + PAGE_SIZE)
-    } else if (apiHasMore) {
-      fetchListings(query, currentPage + 1)
+    function handleScroll() {
+      if (!container) return
+      if (isLoading || isLoadingMore || !hasMore) return
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const nearBottom = scrollHeight - scrollTop - clientHeight < 200
+      if (!nearBottom) return
+      if (visibleCount < filteredJobs.length) {
+        setVisibleCount(prev => prev + PAGE_SIZE)
+      } else if (apiHasMore) {
+        fetchListings(query, currentPage + 1)
+      }
     }
-  }, [sentinelVisible, isLoading, isLoadingMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
 
   // Seleccionar job: lanza scoring on-demand con caché
   function handleSelectJob(job: SearchListing) {
@@ -510,8 +504,7 @@ export function SearchPage() {
                   onSave={handleSave}
                 />
               ))}
-              {/* Sentinel — solo en DOM si hay más que cargar; si no, el observer no dispara */}
-              {hasMore && <div ref={sentinelRef} className="h-4" />}
+              {/* Spinner de carga */}
               {isLoadingMore && (
                 <div className="flex justify-center py-3">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
