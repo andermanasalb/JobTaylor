@@ -12,6 +12,9 @@ export interface EnrichedJob {
   aboutCompany: string | null // párrafo sobre la empresa si hay info
 }
 
+/** 'EN' | 'ES' — mirrors AppSettings.outputLanguage */
+export type EnrichmentLanguage = 'EN' | 'ES'
+
 export interface JobEnrichmentPort {
-  enrich(url: string): Promise<EnrichedJob>
+  enrich(url: string, language?: EnrichmentLanguage): Promise<EnrichedJob>
 }

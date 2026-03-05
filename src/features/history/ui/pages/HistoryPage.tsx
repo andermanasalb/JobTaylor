@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2, Clock } from 'lucide-react'
+import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2, Clock, AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
 import { listHistoryEntries } from '@/features/history/application/usecases/ListHistoryEntries'
@@ -111,6 +111,7 @@ export function HistoryPage() {
   const [statusFilter, setStatusFilter] = useState<DisplayStatus | 'all'>('all')
   const [regionFilter, setRegionFilter] = useState<string>('all')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   useEffect(() => {
     listHistoryEntries(historyRepository)
@@ -187,10 +188,22 @@ export function HistoryPage() {
   async function handleDownload(entry: HistoryEntry) {
     if (downloadingId) return
     setDownloadingId(entry.id)
+    setDownloadError(null)
     try {
-      const cached = await tailoredCvRepository.findByJobPostingId(entry.jobId)
-      const tailored: TailoredCv | null = cached[0] ?? null
-      if (!tailored) return
+      // 1. Try in-memory queue first (same-session fast path)
+      let tailored: TailoredCv | null =
+        generationQueue.jobs.get(entry.jobId)?.tailoredCv ?? null
+
+      // 2. Fall back to persisted repo (cross-session / after refresh)
+      if (!tailored) {
+        const cached = await tailoredCvRepository.findByJobPostingId(entry.jobId)
+        tailored = cached[0] ?? null
+      }
+
+      if (!tailored) {
+        setDownloadError(t('history.downloadNotAvailable'))
+        return
+      }
 
       await exportTailoredCv(tailored, {
         format: settings.exportFormat,
@@ -206,6 +219,7 @@ export function HistoryPage() {
       }
     } catch (err) {
       console.error('Download failed:', err)
+      setDownloadError(t('history.downloadNotAvailable'))
     } finally {
       setDownloadingId(null)
     }
@@ -280,6 +294,17 @@ export function HistoryPage() {
           )}
         </div>
       </div>
+
+      {/* Download error banner */}
+      {downloadError && (
+        <div className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2 md:px-6 text-xs text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">{downloadError}</span>
+          <button onClick={() => setDownloadError(null)} aria-label={t('search.close')} className="shrink-0 hover:opacity-70">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Table / List */}
       <div className="flex-1 overflow-y-auto">

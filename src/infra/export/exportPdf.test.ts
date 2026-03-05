@@ -46,6 +46,9 @@ const tailoredCv: TailoredCv = {
   id: 'tailored-1',
   baseCvId: 'cv-1',
   jobPostingId: 'job-1',
+  jobTitle: 'Senior Frontend Developer',
+  jobDescription: 'Build great web applications with React.',
+  score: null,
   tailoredData: {
     ...baseCv,
     summary: 'Experienced frontend developer applying for Senior role at Acme.',

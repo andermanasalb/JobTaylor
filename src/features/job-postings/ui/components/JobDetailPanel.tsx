@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
   Clock,
+  Sparkles,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/shared/components/ui/badge'
@@ -22,6 +23,7 @@ import type { HistoryStatus } from '@/features/history/domain/HistoryEntry'
 import type { TailoredCv } from '@/features/tailoring/domain/TailoredCv'
 import type { ExportFormat } from '@/features/settings/domain/AppSettings'
 import type { GenerationStatus } from '@/shared/context/GenerationQueueContext'
+import type { EnrichedJob } from '@/features/job-postings/application/ports/JobEnrichmentPort'
 
 interface JobDetailPanelProps {
   job: SearchListing | null
@@ -33,6 +35,10 @@ interface JobDetailPanelProps {
   isExporting: boolean
   isScoring: boolean
   score: number | null
+  /** Datos enriquecidos obtenidos de Tavily + Gemini/Ollama */
+  enrichedJob: EnrichedJob | null
+  /** true mientras se está cargando el enriquecimiento */
+  isEnriching: boolean
   exportFormat: ExportFormat
   onSave?: (job: SearchListing) => void
   onGenerate: (job: SearchListing) => void
@@ -59,6 +65,8 @@ export function JobDetailPanel({
   isExporting,
   isScoring,
   score,
+  enrichedJob,
+  isEnriching,
   exportFormat,
   onSave,
   onGenerate,
@@ -89,8 +97,8 @@ export function JobDetailPanel({
   const generateLabel = hasGenerated ? t('jobDetail.regenerate') : t('jobDetail.generate')
   const GenerateIcon = hasGenerated ? RefreshCw : Scissors
 
-  // Score a mostrar: Ollama si está disponible, sino matchScore de Adzuna
-  const displayScore = score ?? job.matchScore
+  // Score a mostrar: solo si hay score real (no el matchScore=0 de Adzuna)
+  const hasRealScore = score !== null && score !== undefined
 
   return (
     <div className="flex flex-col h-full">
@@ -107,21 +115,23 @@ export function JobDetailPanel({
             </div>
           </div>
 
-          {/* Score badge */}
-          {isScoring ? (
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-muted text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t('jobDetail.calculating')}
-            </span>
-          ) : (
-            <span
-              className={cn(
-                'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
-                scoreColor(displayScore),
-              )}
-            >
-              {displayScore}% match
-            </span>
+          {/* Score badge — solo visible cuando hay score real o está calculando */}
+          {(isScoring || hasRealScore) && (
+            isScoring ? (
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-muted text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('jobDetail.calculating')}
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  'shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
+                  scoreColor(score!),
+                )}
+              >
+                {score}% match
+              </span>
+            )
           )}
         </div>
 
@@ -244,40 +254,128 @@ export function JobDetailPanel({
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
-        {/* Descripción de la oferta (directamente de Adzuna) */}
-        {job.description ? (
+        {/* Descripción — enriquecida si está disponible, si no la de Adzuna */}
+        {isEnriching ? (
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
               {t('jobDetail.description')}
             </h3>
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
-              {job.description}
-            </p>
-          </section>
-        ) : (
-          <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
-            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-foreground">{t('jobDetail.noDescription')}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t('jobDetail.noDescriptionDesc')}
-              </p>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              {t('jobDetail.enriching')}
             </div>
-          </div>
-        )}
+          </section>
+        ) : enrichedJob ? (
+          <>
+            {/* AI-enriched badge */}
+            <div className="flex items-center gap-1.5 rounded-md bg-primary/8 border border-primary/20 px-2.5 py-1.5 w-fit">
+              <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="text-xs font-medium text-primary">{t('jobDetail.enrichedBadge')}</span>
+            </div>
 
-        {/* Tags de tecnologías detectados */}
-        {job.techStack.length > 0 && (
-          <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              {t('jobDetail.techStack')}
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {job.techStack.map(tech => (
-                <Badge key={tech} variant="secondary" className="text-xs">{tech}</Badge>
-              ))}
-            </div>
-          </section>
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                {t('jobDetail.description')}
+              </h3>
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
+                {enrichedJob.description}
+              </p>
+            </section>
+
+            {enrichedJob.requirements.length > 0 && (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {t('jobDetail.requirements')}
+                </h3>
+                <ul className="space-y-1.5">
+                  {enrichedJob.requirements.map((req, i) => (
+                    <li key={i} className="text-sm text-foreground leading-relaxed flex items-start gap-2">
+                      <span className="shrink-0 mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/60" />
+                      {req}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {enrichedJob.niceToHave.length > 0 && (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {t('jobDetail.niceToHave')}
+                </h3>
+                <ul className="space-y-1.5">
+                  {enrichedJob.niceToHave.map((item, i) => (
+                    <li key={i} className="text-sm text-muted-foreground leading-relaxed flex items-start gap-2">
+                      <span className="shrink-0 mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {enrichedJob.techStack.length > 0 && (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {t('jobDetail.techStack')}
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {enrichedJob.techStack.map(tech => (
+                    <Badge key={tech} variant="secondary" className="text-xs">{tech}</Badge>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {enrichedJob.aboutCompany && (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {t('jobDetail.aboutCompany')}
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {enrichedJob.aboutCompany}
+                </p>
+              </section>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Descripción de la oferta (directamente de Adzuna) */}
+            {job.description ? (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {t('jobDetail.description')}
+                </h3>
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
+                  {job.description}
+                </p>
+              </section>
+            ) : (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">{t('jobDetail.noDescription')}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t('jobDetail.noDescriptionDesc')}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Tags de tecnologías detectados */}
+            {job.techStack.length > 0 && (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {t('jobDetail.techStack')}
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {job.techStack.map(tech => (
+                    <Badge key={tech} variant="secondary" className="text-xs">{tech}</Badge>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
 
         {/* Gaps / sugerencias del CV generado */}

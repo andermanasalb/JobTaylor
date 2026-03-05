@@ -6,6 +6,10 @@ import { FakeAiClient } from '../infra/ai/FakeAiClient'
 import { FakeJobFeedAdapter } from '../infra/job-feed/FakeJobFeedAdapter'
 import { FakeEnrichmentAdapter } from '../infra/enrichment/FakeEnrichmentAdapter'
 import { OllamaEnrichmentAdapter } from '../infra/enrichment/OllamaEnrichmentAdapter'
+import { GeminiEnrichmentAdapter } from '../infra/enrichment/GeminiEnrichmentAdapter'
+import { FakeScoringAdapter } from '../infra/scoring/FakeScoringAdapter'
+import { OllamaScoringAdapter } from '../infra/scoring/OllamaScoringAdapter'
+import { GeminiScoringAdapter } from '../infra/scoring/GeminiScoringAdapter'
 import type { CvRepository } from '../features/cv-base/application/ports/CvRepository'
 import type { JobPostingRepository } from '../features/job-postings/application/ports/JobPostingRepository'
 import type { TailoredCvRepository } from '../features/tailoring/application/ports/TailoredCvRepository'
@@ -14,6 +18,7 @@ import type { HistoryRepository } from '../features/history/application/ports/Hi
 import type { AuthRepository } from '../features/auth/application/ports/AuthRepository'
 import type { JobFeedPort } from '../features/job-postings/application/ports/JobFeedPort'
 import type { JobEnrichmentPort } from '../features/job-postings/application/ports/JobEnrichmentPort'
+import type { ScoringPort } from '../infra/scoring/ScoringPort'
 
 export interface AppDependencies {
   cvRepository: CvRepository
@@ -24,13 +29,41 @@ export interface AppDependencies {
   authRepository: AuthRepository
   jobFeedPort: JobFeedPort
   jobEnrichmentPort: JobEnrichmentPort
+  scoringPort: ScoringPort
 }
 
 const useSupabase = import.meta.env.VITE_USE_SUPABASE === 'true'
 const adzunaAppId = import.meta.env.VITE_ADZUNA_APP_ID as string | undefined
 const adzunaAppKey = import.meta.env.VITE_ADZUNA_APP_KEY as string | undefined
-// 'local' usa OllamaEnrichmentAdapter (proxy local), cualquier otro valor usa Fake
-const aiMode = import.meta.env.VITE_AI_MODE as string | undefined
+
+/**
+ * Reads the current aiMode from localStorage (same key as useSettings).
+ * Falls back to 'cloud' (the default) if not set.
+ */
+function readAiMode(): string {
+  try {
+    const raw = localStorage.getItem('jobtaylor-settings')
+    if (!raw) return 'cloud'
+    const parsed = JSON.parse(raw) as { aiMode?: string }
+    return parsed.aiMode ?? 'cloud'
+  } catch {
+    return 'cloud'
+  }
+}
+
+function buildEnrichmentAdapter(): JobEnrichmentPort {
+  const aiMode = readAiMode()
+  if (aiMode === 'cloud') return new GeminiEnrichmentAdapter()
+  if (aiMode === 'local') return new OllamaEnrichmentAdapter()
+  return new FakeEnrichmentAdapter()
+}
+
+function buildScoringAdapter(): ScoringPort {
+  const aiMode = readAiMode()
+  if (aiMode === 'cloud') return new GeminiScoringAdapter()
+  if (aiMode === 'local') return new OllamaScoringAdapter()
+  return new FakeScoringAdapter()
+}
 
 /**
  * Composition root.
@@ -73,9 +106,8 @@ async function buildDeps(): Promise<AppDependencies> {
       jobFeedPort: adzunaAppId && adzunaAppKey
         ? new AdzunaJobFeedAdapter(adzunaAppId, adzunaAppKey)
         : new FakeJobFeedAdapter(),
-      jobEnrichmentPort: aiMode === 'local'
-        ? new OllamaEnrichmentAdapter()
-        : new FakeEnrichmentAdapter(),
+      jobEnrichmentPort: buildEnrichmentAdapter(),
+      scoringPort: buildScoringAdapter(),
     }
   }
 
@@ -89,9 +121,8 @@ async function buildDeps(): Promise<AppDependencies> {
     historyRepository: new LocalStorageHistoryRepository(),
     authRepository: new FakeAuthRepository(),
     jobFeedPort: new FakeJobFeedAdapter(),
-    jobEnrichmentPort: aiMode === 'local'
-      ? new OllamaEnrichmentAdapter()
-      : new FakeEnrichmentAdapter(),
+    jobEnrichmentPort: buildEnrichmentAdapter(),
+    scoringPort: buildScoringAdapter(),
   }
 }
 

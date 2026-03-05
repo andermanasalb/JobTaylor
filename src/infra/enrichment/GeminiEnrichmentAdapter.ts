@@ -3,17 +3,16 @@ import type { JobEnrichmentPort, EnrichedJob, EnrichmentLanguage } from '../../f
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
 
 /**
- * Llama al proxy local (proxy/server.cjs) que a su vez:
- *  1. Hace fetch de la URL de la oferta (server-side, sin CORS)
- *  2. Extrae el texto limpio del HTML
- *  3. Llama a Ollama para generar el resumen estructurado
+ * Calls the local proxy /enrich endpoint with provider='gemini'.
+ * The proxy uses Tavily Extract to fetch the job page content and
+ * Gemini to produce the structured EnrichedJob JSON.
  */
-export class OllamaEnrichmentAdapter implements JobEnrichmentPort {
+export class GeminiEnrichmentAdapter implements JobEnrichmentPort {
   async enrich(url: string, language?: EnrichmentLanguage): Promise<EnrichedJob> {
     const res = await fetch(`${PROXY_URL}/enrich`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, language }),
+      body: JSON.stringify({ url, provider: 'gemini', language }),
     })
 
     if (!res.ok) {

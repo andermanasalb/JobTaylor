@@ -1,11 +1,11 @@
-import type { JobEnrichmentPort, EnrichedJob } from '../../features/job-postings/application/ports/JobEnrichmentPort'
+import type { JobEnrichmentPort, EnrichedJob, EnrichmentLanguage } from '../../features/job-postings/application/ports/JobEnrichmentPort'
 
 /**
  * Implementación fake para Stage 0 y tests.
  * Devuelve datos enriquecidos estáticos sin llamadas de red.
  */
 export class FakeEnrichmentAdapter implements JobEnrichmentPort {
-  async enrich(_url: string): Promise<EnrichedJob> {
+  async enrich(_url: string, _language?: EnrichmentLanguage): Promise<EnrichedJob> {
     return {
       description:
         'Esta es una excelente oportunidad para unirse a un equipo dinámico y en crecimiento. ' +

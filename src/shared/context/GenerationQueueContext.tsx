@@ -28,6 +28,7 @@ import type { TailoredCvRepository } from '@/features/tailoring/application/port
 import type { HistoryRepository } from '@/features/history/application/ports/HistoryRepository'
 import type { AiClient } from '@/features/tailoring/application/ports/AiClient'
 import { OllamaAiClient } from '@/infra/ai/OllamaAiClient'
+import { GeminiAiClient } from '@/infra/ai/GeminiAiClient'
 import { listBaseCvs } from '@/features/cv-base/application/usecases/ListBaseCvs'
 import type { CvRepository } from '@/features/cv-base/application/ports/CvRepository'
 import { createHistoryEntry } from '@/features/history/domain/HistoryEntry'
@@ -130,15 +131,34 @@ export function GenerationQueueProvider({ children }: { children: ReactNode }) {
 
       const jobPosting = searchListingToJobPosting(jobEntry.job)
 
+      const rawSettings = localStorage.getItem('jobtaylor-settings')
+      const outputLanguage: string = rawSettings
+        ? (JSON.parse(rawSettings).outputLanguage ?? 'ES')
+        : 'ES'
+
+      // Recuperar descripción enriquecida de sessionStorage si existe para este job.
+      // Proporciona más contexto al prompt que la descripción cruda de Adzuna.
+      let enrichedDescription: string = jobEntry.job.description ?? ''
+      try {
+        const enrichedMap = JSON.parse(sessionStorage.getItem('search.enrichedJobs') ?? '{}') as Record<string, { description?: string }>
+        const enriched = enrichedMap[nextId]
+        if (enriched?.description) enrichedDescription = enriched.description
+      } catch { /* sessionStorage may be unavailable — use raw description */ }
+
+      // Read score from sessionStorage if it was computed during search
+      let jobScore: number | null = null
+      try {
+        const scoresRaw = sessionStorage.getItem('search.jobScores')
+        if (scoresRaw) {
+          const scoresMap = JSON.parse(scoresRaw) as Record<string, number>
+          const s = scoresMap[nextId]
+          if (typeof s === 'number' && !isNaN(s)) jobScore = s
+        }
+      } catch { /* non-critical */ }
+
       const client = deps.aiMode === 'local'
-        ? (() => {
-            const rawSettings = localStorage.getItem('jobtaylor-settings')
-            const outputLanguage: string = rawSettings
-              ? (JSON.parse(rawSettings).outputLanguage ?? 'ES')
-              : 'ES'
-            return new OllamaAiClient(deps.strictness, jobEntry.job.description ?? undefined, outputLanguage)
-          })()
-        : deps.aiClient
+        ? new OllamaAiClient(deps.strictness, enrichedDescription, outputLanguage)
+        : new GeminiAiClient(deps.strictness, enrichedDescription, outputLanguage)
 
       const { tailoredData, gaps, suggestions } = await client.tailorCv(baseCv, jobPosting)
 
@@ -146,6 +166,9 @@ export function GenerationQueueProvider({ children }: { children: ReactNode }) {
         id: crypto.randomUUID(),
         baseCvId: baseCv.id,
         jobPostingId: nextId,
+        jobTitle: jobEntry.job.title,
+        jobDescription: enrichedDescription ?? jobEntry.job.description ?? '',
+        score: jobScore,
         tailoredData,
         gaps,
         suggestions,
@@ -186,7 +209,6 @@ export function GenerationQueueProvider({ children }: { children: ReactNode }) {
       // Pequeño delay para no bloquear el hilo de render
       setTimeout(() => processNext(), 50)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateJob])
 
   const enqueue = useCallback((job: SearchListing, deps: GenerationQueueDeps) => {

@@ -5,6 +5,10 @@ import { useAppDeps } from '@/app/AppDepsContext'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { SearchListing, WorkMode } from '../types/SearchListing'
 import type { BaseCv } from '@/features/cv-base/domain/BaseCv'
+import type { EnrichedJob } from '@/features/job-postings/application/ports/JobEnrichmentPort'
+import { useEnrichmentAdapter } from '@/features/job-postings/application/hooks/useEnrichmentAdapter'
+import { useScoreAdapter } from '@/features/job-postings/application/hooks/useScoreAdapter'
+import { cvToPlainText } from '@/features/cv-base/domain/cvToPlainText'
 import { FilterBar } from '../components/FilterBar'
 import { JobCard } from '../components/JobCard'
 import { JobDetailPanel } from '../components/JobDetailPanel'
@@ -35,7 +39,6 @@ type SortField = 'date' | 'score'
 const DEBOUNCE_MS = 600
 const PAGE_SIZE = 20
 const MAX_PAGES = 10 // máximo de páginas a cargar (200 ofertas)
-const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
 
 export function SearchPage() {
   const { historyRepository, cvRepository, aiClient, tailoredCvRepository, jobFeedPort } = useAppDeps()
@@ -45,6 +48,9 @@ export function SearchPage() {
   const navigate = useNavigate()
   const generationQueue = useGenerationQueue()
   const { t } = useTranslation()
+  // Reactive adapters — rebuild when aiMode changes
+  const jobEnrichmentPort = useEnrichmentAdapter(settings.aiMode)
+  const scoreAdapter = useScoreAdapter(settings.aiMode)
 
   // ── Estado persistido en sessionStorage (sobrevive navegación entre páginas) ──
   const [query, setQuery] = useState<string>(() => sessionStorage.getItem('search.query') ?? '')
@@ -61,7 +67,18 @@ export function SearchPage() {
     (sessionStorage.getItem('search.sortBy') as SortField) ?? 'score'
   )
   const [selectedJob, setSelectedJob] = useState<SearchListing | null>(() => {
-    try { const s = sessionStorage.getItem('search.selectedJob'); return s ? JSON.parse(s) : null } catch { return null }
+    // Do not restore the selected job on a full page reload — only on SPA navigation.
+    // performance.navigation.type 1 = reload; PerformanceNavigationTiming type 'reload'
+    try {
+      const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      const isReload = navEntry ? navEntry.type === 'reload' : performance.navigation?.type === 1
+      if (isReload) {
+        sessionStorage.removeItem('search.selectedJob')
+        return null
+      }
+      const s = sessionStorage.getItem('search.selectedJob')
+      return s ? JSON.parse(s) : null
+    } catch { return null }
   })
   const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(() => {
@@ -78,20 +95,31 @@ export function SearchPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // CV Base — solo ref, no necesitamos re-render
-  const baseCvRef = useRef<BaseCv | null>(null)
+  // CV Base — stored as a promise so handleSelectJob can always await it,
+  // even if the user clicks a job card before the async load finishes.
+  const baseCvPromiseRef = useRef<Promise<BaseCv | null>>(Promise.resolve(null))
 
   // Estado del historial y exportación
   const [historyStatuses, setHistoryStatuses] = useState<Map<string, HistoryStatus>>(new Map())
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
 
-  // Scores calculados por Ollama (por jobId) — se calculan al hacer click
-  const [jobScores, setJobScores] = useState<Map<string, number>>(new Map())
+  // Scores calculados por el scoring AI (por jobId) — persistidos en sessionStorage
+  const [jobScores, setJobScores] = useState<Map<string, number>>(() => {
+    try {
+      const s = sessionStorage.getItem('search.jobScores')
+      return s ? new Map(Object.entries(JSON.parse(s) as Record<string, number>)) : new Map()
+    } catch { return new Map() }
+  })
   const [scoringJobId, setScoringJobId] = useState<string | null>(null)
 
-  // Stable ref to settings.aiMode to avoid stale closures
-  const aiModeRef = useRef(settings.aiMode)
-  useEffect(() => { aiModeRef.current = settings.aiMode }, [settings.aiMode])
+  // Enriched job data (por jobId) — persistidos en sessionStorage
+  const [enrichedJobs, setEnrichedJobs] = useState<Map<string, EnrichedJob>>(() => {
+    try {
+      const s = sessionStorage.getItem('search.enrichedJobs')
+      return s ? new Map(Object.entries(JSON.parse(s) as Record<string, EnrichedJob>)) : new Map()
+    } catch { return new Map() }
+  })
+  const [enrichingJobId, setEnrichingJobId] = useState<string | null>(null)
 
   // jobId pendiente de seleccionar desde History (se resuelve cuando allListings carga)
   const pendingJobIdRef = useRef<string | null>(null)
@@ -132,13 +160,22 @@ export function SearchPage() {
   useEffect(() => {
     if (allListings.length > 0) sessionStorage.setItem('search.listings', JSON.stringify(allListings))
   }, [allListings])
+  useEffect(() => {
+    const obj = Object.fromEntries(jobScores)
+    sessionStorage.setItem('search.jobScores', JSON.stringify(obj))
+  }, [jobScores])
+  useEffect(() => {
+    const obj = Object.fromEntries(enrichedJobs)
+    sessionStorage.setItem('search.enrichedJobs', JSON.stringify(obj))
+  }, [enrichedJobs])
 
   // Core fetch — page=1 replaces list, page>1 appends
   const fetchListings = useCallback(async (keywords?: string, page = 1) => {
     if (page === 1) {
       setIsLoading(true)
       setFeedError(null)
-      setJobScores(new Map())
+      // Do NOT reset jobScores here — they are persisted in sessionStorage and
+      // must survive new searches so previously scored jobs keep their badges.
     } else {
       setIsLoadingMore(true)
     }
@@ -188,10 +225,11 @@ export function SearchPage() {
 
   // Init
   useEffect(() => {
-    // Cargar CV base (necesario para scoring on-demand)
-    listBaseCvs(cvRepository).then(cvs => {
-      if (cvs.length > 0) baseCvRef.current = cvs[0]
-    }).catch(console.error)
+    // Cargar CV base — guardamos la Promise para que handleSelectJob pueda awaitar
+    // incluso si el usuario hace click antes de que termine la carga.
+    baseCvPromiseRef.current = listBaseCvs(cvRepository)
+      .then(cvs => cvs[0] ?? null)
+      .catch(() => null)
 
     // Restaurar búsqueda guardada — si ya hay resultados en caché los mostramos
     // y relanzamos la búsqueda en background para refrescar
@@ -315,29 +353,59 @@ export function SearchPage() {
     return () => container.removeEventListener('scroll', handleScroll)
   }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
 
-  // Seleccionar job: lanza scoring on-demand con caché
-  function handleSelectJob(job: SearchListing) {
+  // Seleccionar job: lanza enrichment y scoring on-demand con caché
+  async function handleSelectJob(job: SearchListing) {
     setSelectedJob(job)
 
-    if (aiModeRef.current !== 'local') return
-    if (jobScores.has(job.id)) return
-    if (!baseCvRef.current || !job.description) return
+    const alreadyScored = jobScores.has(job.id)
+    const alreadyEnriched = enrichedJobs.has(job.id)
+    const enrichmentInProgress = enrichingJobId === job.id
 
-    const cv = baseCvRef.current
-    setScoringJobId(job.id)
-    fetch(`${PROXY_URL}/score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cv, jobTitle: job.title, jobDescription: job.description }),
-    })
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(data => {
-        if (typeof data.score === 'number') {
-          setJobScores(prev => new Map(prev).set(job.id, data.score))
-        }
-      })
-      .catch(err => console.warn('Score failed for', job.id, err))
-      .finally(() => setScoringJobId(null))
+    // ── Enrichment ──────────────────────────────────────────────────────────
+    // Lanza el enriquecimiento si el job tiene URL y no está ya enriquecido ni en progreso
+    let enrichmentPromise: Promise<EnrichedJob | null> = Promise.resolve(
+      alreadyEnriched ? (enrichedJobs.get(job.id) ?? null) : null
+    )
+
+    if (job.url && !alreadyEnriched && !enrichmentInProgress) {
+      setEnrichingJobId(job.id)
+      console.log(`[enrichment] Starting enrichment for job ${job.id} (aiMode=${settings.aiMode}) url=${job.url}`)
+      enrichmentPromise = jobEnrichmentPort.enrich(job.url, settings.outputLanguage)
+        .then(enriched => {
+          console.log(`[enrichment] Success for job ${job.id}`, enriched)
+          setEnrichedJobs(prev => new Map(prev).set(job.id, enriched))
+          return enriched
+        })
+        .catch(err => {
+          console.error('[enrichment] Failed for', job.id, err)
+          return null
+        })
+        .finally(() => setEnrichingJobId(null))
+    }
+
+    // ── Scoring ─────────────────────────────────────────────────────────────
+    // Awaits both enrichment AND the baseCv load promise, so the user can click
+    // immediately after mount without losing the scoring step.
+    if (!alreadyScored) {
+      setScoringJobId(job.id)
+
+      Promise.all([enrichmentPromise, baseCvPromiseRef.current])
+        .then(([enriched, cv]) => {
+          if (!cv) throw new Error('No base CV available for scoring')
+          const cvPreview = cvToPlainText(cv)
+          // Preferimos la descripción enriquecida; fallback a Adzuna description
+          const jobDescription = enriched?.description ?? job.description ?? ''
+          if (!jobDescription) throw new Error('No job description available for scoring')
+          console.log(`[scoring] Starting for job ${job.id} (aiMode=${settings.aiMode})`)
+          return scoreAdapter.score(cvPreview, jobDescription)
+        })
+        .then(result => {
+          console.log(`[scoring] Score for job ${job.id}: ${result.score}`)
+          setJobScores(prev => new Map(prev).set(job.id, result.score))
+        })
+        .catch(err => console.error('[scoring] Failed for', job.id, err))
+        .finally(() => setScoringJobId(null))
+    }
   }
 
   function handleSave(job: SearchListing) {
@@ -416,7 +484,6 @@ export function SearchPage() {
         setSavedJobs(prev => new Set(prev).add(jobId))
       }
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generationQueue.jobs])
 
   function clearFilters() {
@@ -500,6 +567,7 @@ export function SearchPage() {
                   isSelected={selectedJob?.id === job.id}
                   isSaved={savedJobs.has(job.id)}
                   score={jobScores.get(job.id) ?? null}
+                  isScoring={scoringJobId === job.id}
                   onSelect={handleSelectJob}
                   onSave={handleSave}
                 />
@@ -531,6 +599,8 @@ export function SearchPage() {
           isExporting={selectedJob?.id === exportingJobId}
           isScoring={selectedJob?.id === scoringJobId}
           score={selectedJob ? (jobScores.get(selectedJob.id) ?? null) : null}
+          enrichedJob={selectedJob ? (enrichedJobs.get(selectedJob.id) ?? null) : null}
+          isEnriching={selectedJob?.id === enrichingJobId}
           exportFormat={settings.exportFormat}
           onSave={handleSave}
           onGenerate={handleGenerate}
@@ -568,6 +638,8 @@ export function SearchPage() {
                 isExporting={selectedJob.id === exportingJobId}
                 isScoring={selectedJob.id === scoringJobId}
                 score={jobScores.get(selectedJob.id) ?? null}
+                enrichedJob={enrichedJobs.get(selectedJob.id) ?? null}
+                isEnriching={selectedJob.id === enrichingJobId}
                 exportFormat={settings.exportFormat}
                 onSave={handleSave}
                 onGenerate={handleGenerate}

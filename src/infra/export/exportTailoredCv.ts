@@ -7,7 +7,9 @@ import { downloadFile, sanitizeFilename } from './downloadFile'
 
 function buildFilename(cv: TailoredCv, ext: string): string {
   const name = sanitizeFilename(
-    `${cv.tailoredData.personalInfo.fullName}-tailored`,
+    cv.jobTitle
+      ? `${cv.tailoredData.personalInfo.fullName}-${cv.jobTitle}`
+      : `${cv.tailoredData.personalInfo.fullName}-tailored`,
   )
   return `${name}.${ext}`
 }

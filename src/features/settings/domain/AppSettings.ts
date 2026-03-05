@@ -13,7 +13,7 @@ export interface AppSettings {
 }
 
 export const defaultSettings: AppSettings = {
-  aiMode: 'local',
+  aiMode: 'cloud',
   outputLanguage: 'EN',
   template: 'modern',
   strictness: 70,

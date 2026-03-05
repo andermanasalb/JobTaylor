@@ -2,7 +2,9 @@
  * JobTaylor Local Proxy Server
  *
  * Corre en localhost:3001. Hace dos cosas:
- *   POST /enrich  → fetch de la URL de la oferta + limpieza HTML + llamada a Ollama
+ *   POST /enrich  → enriquece una oferta a partir de su URL
+ *                   - provider='gemini': Tavily extrae el contenido + Gemini lo estructura
+ *                   - sin provider / provider='ollama': fetch HTML + limpieza + Ollama
  *   GET  /health  → comprueba que el proxy y Ollama están activos
  *
  * Uso: node proxy/server.js   (o npm run proxy)
@@ -14,8 +16,13 @@ const { parse } = require('node-html-parser')
 const PORT = 3001
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434'
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:0.5b'
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview'
 // Límite de caracteres del texto extraído que se manda a Ollama (evitar context overflow)
 const MAX_TEXT_CHARS = 8000
+// Límite para Gemini — ventana de contexto de 1M tokens, podemos enviar mucho más
+const MAX_TEXT_CHARS_GEMINI = 50000
 
 const app = express()
 app.use(express.json())
@@ -43,14 +50,145 @@ app.get('/health', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// POST /enrich  — body: { url: string }
+// POST /enrich  — body: { url: string, provider?: 'gemini' | 'ollama' }
 // ---------------------------------------------------------------------------
 app.post('/enrich', async (req, res) => {
-  const { url } = req.body
+  const { url, provider, language } = req.body
+  // language: 'EN' | 'ES' — controls the output language of the enrichment. Default EN.
+  const outputLanguage = language === 'ES' ? 'ES' : 'EN'
+  console.log(`[enrich] provider=${provider ?? 'ollama'} language=${outputLanguage} url=${url}`)
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'url is required' })
   }
 
+  // ── Gemini + Tavily branch ──────────────────────────────────────────────
+  if (provider === 'gemini') {
+    if (!TAVILY_API_KEY) {
+      console.error('[enrich] TAVILY_API_KEY is not set — restart proxy with --env-file=.env.local')
+      return res.status(503).json({ error: 'TAVILY_API_KEY not configured in proxy environment' })
+    }
+    if (!GEMINI_API_KEY) {
+      console.error('[enrich] GEMINI_API_KEY is not set — restart proxy with --env-file=.env.local')
+      return res.status(503).json({ error: 'GEMINI_API_KEY not configured in proxy environment' })
+    }
+
+    // Adzuna redirect URLs (/land/ad/{id}?...) return HTTP 403 to Tavily.
+    // Convert them to the public details page (/details/{id}) which Tavily can fetch.
+    let fetchUrl = url
+    const adzunaRedirectMatch = url.match(/adzuna\.[a-z.]+\/land\/ad\/(\d+)/)
+    if (adzunaRedirectMatch) {
+      const jobId = adzunaRedirectMatch[1]
+      const adzunaDomain = url.match(/https?:\/\/(www\.adzuna\.[a-z.]+)\//)?.[1] ?? 'www.adzuna.es'
+      fetchUrl = `https://${adzunaDomain}/details/${jobId}`
+      console.log(`[enrich] Adzuna redirect detected — rewriting to details page: ${fetchUrl}`)
+    }
+
+    // 1. Usar Tavily Extract para obtener el contenido limpio de la página
+    let pageContent
+    try {
+      console.log(`[enrich] calling Tavily Extract for: ${fetchUrl}`)
+      const tavilyRes = await fetch('https://api.tavily.com/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: TAVILY_API_KEY,
+          urls: [fetchUrl],
+        }),
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!tavilyRes.ok) {
+        const errBody = await tavilyRes.text()
+        throw new Error(`Tavily HTTP ${tavilyRes.status}: ${errBody}`)
+      }
+      const tavilyData = await tavilyRes.json()
+      // Tavily Extract devuelve { results: [{ url, raw_content, ... }], failed_results: [...] }
+      const result = tavilyData.results?.[0]
+      if (!result || !result.raw_content) {
+        const failReason = tavilyData.failed_results?.[0]?.error ?? 'no content returned'
+        throw new Error(`Tavily returned no content for this URL: ${failReason}`)
+      }
+      pageContent = result.raw_content.slice(0, MAX_TEXT_CHARS_GEMINI)
+      console.log(`[enrich] Tavily OK — ${pageContent.length} chars extracted`)
+    } catch (err) {
+      console.error('[enrich] Tavily failed:', err)
+      return res.status(502).json({ error: `Tavily extract failed: ${err}` })
+    }
+
+    // 2. Llamar a Gemini para estructurar el contenido
+    const outputLang = outputLanguage === 'ES' ? 'Spanish' : 'English'
+    const geminiPrompt = `You are a senior talent analyst and expert technical writer. Your task is to deeply analyse a job posting and produce a rich, professionally-written structured summary that a candidate can use to understand the role in full detail and tailor their CV accordingly.
+
+STRICT RULES — follow every one without exception:
+1. Extract ONLY information present in the job posting. Never invent, assume, or hallucinate anything.
+2. Write ALL text fields ("description", "requirements", "niceToHave", "techStack", "aboutCompany") in clear, professional ${outputLang}. This is mandatory regardless of the language of the original job posting.
+3. The "description" field must be a multi-paragraph narrative (minimum 5 paragraphs). Cover: the purpose of the role, the team structure and how this position fits in, the day-to-day responsibilities, the expected impact on the product or business, working conditions (remote/hybrid/on-site, salary range, benefits, perks) if mentioned, and any other context that would help a candidate decide whether to apply.
+4. "requirements" must only list things the posting explicitly marks as mandatory, essential, required, or minimum (e.g. years of experience, specific degrees, must-have technologies). Be concrete and specific — write "5+ years of experience with Python" not "Python experience".
+5. "niceToHave" must only list things the posting marks as valued, desired, a plus, or nice to have. Same specificity rule applies.
+6. "techStack" must be exhaustive: list every technology, programming language, framework, library, tool, cloud platform, database, methodology (Agile, Scrum, Kanban, SAFe…), soft skill explicitly valued (leadership, communication, mentoring…), spoken language requirements, certification names, etc. Include EVERYTHING relevant to a technical profile.
+7. "aboutCompany" must synthesise all available information about the employer: industry sector, product or service, size, stage (startup/scaleup/enterprise), mission or vision, culture, notable clients or projects, office locations. If insufficient info is present, return null.
+8. Return ONLY valid JSON — no markdown, no code fences, no explanatory text outside the JSON object.
+
+Output JSON schema (use exactly these keys):
+{
+    "description": "5+ paragraph narrative in ${outputLang} covering role purpose, team context, day-to-day responsibilities, expected impact, and any working conditions or benefits mentioned.",
+  "requirements": [
+    "Concrete mandatory requirement — include specific numbers/versions/years where stated",
+    "..."
+  ],
+  "niceToHave": [
+    "Concrete valued/bonus requirement — include specific numbers/versions/years where stated",
+    "..."
+  ],
+  "techStack": [
+    "Every technology, tool, methodology, or key skill mentioned — be exhaustive",
+    "..."
+  ],
+  "aboutCompany": "Rich paragraph about the company. Null if insufficient information."
+}
+
+Job posting content to analyse:
+---
+${pageContent}
+---
+
+Respond with valid JSON only.`
+
+    let enriched
+    try {
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: geminiPrompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      )
+      if (!geminiRes.ok) {
+        const errBody = await geminiRes.text()
+        throw new Error(`Gemini HTTP ${geminiRes.status}: ${errBody}`)
+      }
+      const geminiData = await geminiRes.json()
+      const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      if (!raw) throw new Error('Gemini returned empty response')
+      const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
+      enriched = JSON.parse(cleaned)
+      console.log('[enrich] Gemini OK — enrichment complete')
+    } catch (err) {
+      console.error('[enrich] Gemini failed:', err)
+      return res.status(503).json({ error: `Gemini enrichment failed: ${err}` })
+    }
+
+    return res.json(enriched)
+  }
+
+  // ── Ollama branch (default) ─────────────────────────────────────────────
   // 1. Fetch la página de la oferta
   let rawHtml
   try {
@@ -164,38 +302,93 @@ Recuerda: responde SOLO con el JSON válido.`
 })
 
 // ---------------------------------------------------------------------------
-// POST /score — body: { cv: BaseCv, jobTitle, jobDescription }
-// Devuelve { score: number } — compatibilidad 0-100 entre el CV y la oferta
+// POST /score — body: { cvPreview: string, jobDescription: string, provider?: 'gemini'|'ollama' }
+// Devuelve { score: number } — compatibilidad 0-100 entre el CV y la oferta.
+//
+// Retro-compatibilidad: si llega el cuerpo antiguo { cv, jobTitle, jobDescription }
+// (sin cvPreview) se construye cvPreview a partir del objeto cv.
 // ---------------------------------------------------------------------------
 app.post('/score', async (req, res) => {
-  const { cv, jobTitle, jobDescription } = req.body
-  if (!cv || !jobTitle || !jobDescription) {
-    return res.status(400).json({ error: 'cv, jobTitle y jobDescription son obligatorios' })
+  const { cvPreview: cvPreviewRaw, jobDescription, cv, jobTitle, provider } = req.body
+
+  // Retro-compatibilidad con el formato antiguo { cv, jobTitle, jobDescription }
+  let cvPreview = cvPreviewRaw
+  if (!cvPreview && cv) {
+    const skillNames = (cv.skills || []).map(s => s.name).join(', ')
+    const expSummary = (cv.experience || [])
+      .map(e => `${e.title} en ${e.company} (${e.startDate}–${e.endDate || 'presente'})`)
+      .join('; ')
+    cvPreview = [
+      cv.summary ? `Resumen: ${cv.summary}` : '',
+      skillNames ? `Skills: ${skillNames}` : '',
+      expSummary ? `Experiencia: ${expSummary}` : '',
+      jobTitle ? `Puesto al que aplica: ${jobTitle}` : '',
+    ].filter(Boolean).join('\n')
   }
 
-  // Construir resumen del CV para el prompt
-  const skillNames = (cv.skills || []).map(s => s.name).join(', ')
-  const expSummary = (cv.experience || [])
-    .map(e => `${e.title} en ${e.company} (${e.startDate}–${e.endDate || 'presente'})`)
-    .join('; ')
-  const cvText = [
-    cv.summary ? `Resumen: ${cv.summary}` : '',
-    skillNames ? `Skills: ${skillNames}` : '',
-    expSummary ? `Experiencia: ${expSummary}` : '',
-  ].filter(Boolean).join('\n')
+  if (!cvPreview || !jobDescription) {
+    return res.status(400).json({ error: 'cvPreview y jobDescription son obligatorios' })
+  }
 
-  const prompt = `Eres un experto en selección de personal. Evalúa la compatibilidad entre este candidato y esta oferta de trabajo.
+  const prompt = `You are a recruitment expert. Evaluate the compatibility between a candidate and a job posting.
 
-CV DEL CANDIDATO:
-${cvText}
+CANDIDATE CV:
+${cvPreview}
 
-OFERTA:
-Título: ${jobTitle}
-Descripción: ${jobDescription.slice(0, 2000)}
+JOB DESCRIPTION:
+${jobDescription.slice(0, 4000)}
 
-Devuelve SOLO un número entero del 0 al 100 representando el % de compatibilidad. Sin texto adicional, solo el número.`
+Return ONLY a single integer from 0 to 100 representing the compatibility percentage. No explanation, no text, no punctuation — just the number.
+Example of a valid response: 73`
 
+  // ── Gemini branch ──────────────────────────────────────────────────────────
+  if (provider === 'gemini') {
+    if (!GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'GEMINI_API_KEY not configured in proxy environment' })
+    }
+    try {
+      console.log(`[score] Gemini scoring — cv ${cvPreview.length} chars, job ${jobDescription.length} chars`)
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 32 },
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      )
+      if (!geminiRes.ok) {
+        const errBody = await geminiRes.text()
+        throw new Error(`Gemini HTTP ${geminiRes.status}: ${errBody}`)
+      }
+      const geminiData = await geminiRes.json()
+      const candidate = geminiData.candidates?.[0]
+      const finishReason = candidate?.finishReason ?? 'UNKNOWN'
+      const raw = (candidate?.content?.parts?.[0]?.text ?? '').trim()
+      console.log(`[score] Gemini raw="${raw}" finishReason=${finishReason}`)
+      // Strip any non-digit chars (e.g. trailing newlines, quotes, "%" sign)
+      const digits = raw.replace(/[^0-9]/g, '')
+      const score = digits.length > 0 ? parseInt(digits, 10) : NaN
+      if (isNaN(score)) {
+        // Log full Gemini response to help diagnose recurring empty responses
+        console.error('[score] Score not parseable. Full Gemini response:', JSON.stringify(geminiData))
+        throw new Error(`Score no parseable: "${raw}" (finishReason=${finishReason})`)
+      }
+      const clamped = Math.min(100, Math.max(0, score))
+      console.log(`[score] Gemini score=${clamped}`)
+      return res.json({ score: clamped })
+    } catch (err) {
+      console.error('[score] Gemini failed:', err)
+      return res.status(503).json({ error: `Error al calcular score con Gemini: ${err}` })
+    }
+  }
+
+  // ── Ollama branch (default) ────────────────────────────────────────────────
   try {
+    console.log(`[score] Ollama scoring — cv ${cvPreview.length} chars, job ${jobDescription.length} chars`)
     const ollamaRes = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -207,18 +400,20 @@ Devuelve SOLO un número entero del 0 al 100 representando el % de compatibilida
     const raw = (data.response ?? '').trim()
     const score = parseInt(raw.replace(/[^0-9]/g, ''), 10)
     if (isNaN(score)) throw new Error(`Score no parseable: ${raw}`)
-    res.json({ score: Math.min(100, Math.max(0, score)) })
+    const clamped = Math.min(100, Math.max(0, score))
+    console.log(`[score] Ollama score=${clamped}`)
+    res.json({ score: clamped })
   } catch (err) {
     res.status(503).json({ error: `Error al calcular score: ${err}` })
   }
 })
 
 // ---------------------------------------------------------------------------
-// POST /tailor — body: { cv: BaseCv, jobTitle, jobDescription, enrichedDescription, strictness }
+// POST /tailor — body: { cv: BaseCv, jobTitle, jobDescription, enrichedDescription, strictness, language, provider? }
 // Genera un CV adaptado a la oferta respetando los guardrails
 // ---------------------------------------------------------------------------
 app.post('/tailor', async (req, res) => {
-  const { cv, jobTitle, jobDescription, enrichedDescription, strictness = 70, language = 'ES' } = req.body
+  const { cv, jobTitle, jobDescription, enrichedDescription, strictness = 70, language = 'ES', provider } = req.body
   if (!cv || !jobTitle) {
     return res.status(400).json({ error: 'cv y jobTitle son obligatorios' })
   }
@@ -265,6 +460,46 @@ Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
 
 Solo el JSON, sin texto adicional.`
 
+  // ── Gemini branch ────────────────────────────────────────────────────────────
+  if (provider === 'gemini') {
+    if (!GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'GEMINI_API_KEY not configured in proxy environment' })
+    }
+    try {
+      console.log(`[tailor] Gemini — strictness=${strictness} language=${language} cv=${cvJson.length}chars job=${jobContext.length}chars`)
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.3,
+            },
+          }),
+          signal: AbortSignal.timeout(60000),
+        }
+      )
+      if (!geminiRes.ok) {
+        const errBody = await geminiRes.text()
+        throw new Error(`Gemini HTTP ${geminiRes.status}: ${errBody}`)
+      }
+      const geminiData = await geminiRes.json()
+      const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      if (!raw) throw new Error('Gemini returned empty response')
+      const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
+      const result = JSON.parse(cleaned)
+      console.log('[tailor] Gemini OK')
+      return res.json(result)
+    } catch (err) {
+      console.error('[tailor] Gemini failed:', err)
+      return res.status(503).json({ error: `Error al adaptar CV con Gemini: ${err}` })
+    }
+  }
+
+  // ── Ollama branch (default) ───────────────────────────────────────────────
   try {
     const ollamaRes = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: 'POST',
@@ -645,6 +880,9 @@ app.listen(PORT, () => {
   console.log(`\nJobTaylor Proxy corriendo en http://localhost:${PORT}`)
   console.log(`  Ollama URL : ${OLLAMA_URL}`)
   console.log(`  Modelo     : ${OLLAMA_MODEL}`)
+  console.log(`  Gemini key : ${GEMINI_API_KEY ? '✓ set' : '✗ NOT SET — cloud enrichment will fail'}`)
+  console.log(`  Gemini model: ${GEMINI_MODEL}`)
+  console.log(`  Tavily key : ${TAVILY_API_KEY ? '✓ set' : '✗ NOT SET — cloud enrichment will fail'}`)
   console.log(`  GET  /health    — comprueba estado`)
   console.log(`  POST /enrich    — enriquece una oferta a partir de su URL`)
   console.log(`  POST /score     — compatibilidad CV ↔ oferta (0-100)`)

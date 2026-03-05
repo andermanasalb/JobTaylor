@@ -1,4 +1,4 @@
-import { MapPin, Calendar, Bookmark, ExternalLink } from 'lucide-react'
+import { MapPin, Calendar, Bookmark, ExternalLink, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
@@ -10,6 +10,7 @@ interface JobCardProps {
   isSelected?: boolean
   isSaved?: boolean
   score?: number | null
+  isScoring?: boolean
   onSelect?: (job: SearchListing) => void
   onSave?: (job: SearchListing) => void
 }
@@ -25,9 +26,10 @@ function scoreColor(score: number) {
   return 'bg-muted text-muted-foreground'
 }
 
-export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: JobCardProps) {
+export function JobCard({ job, isSelected, isSaved, score, isScoring, onSelect, onSave }: JobCardProps) {
   const { t } = useTranslation()
-  const displayScore = score ?? job.matchScore
+  // Only show a score badge when there is a real computed score or we are computing one
+  const hasRealScore = score !== null && score !== undefined
   return (
     <button
       type="button"
@@ -49,11 +51,19 @@ export function JobCard({ job, isSelected, isSaved, score, onSelect, onSave }: J
         </div>
         <span
           className={cn(
-            'shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
-            scoreColor(displayScore),
+            'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
+            isScoring
+              ? 'bg-muted text-muted-foreground'
+              : hasRealScore
+                ? scoreColor(score!)
+                : 'bg-muted/50 text-muted-foreground/50',
           )}
         >
-          {displayScore}%
+          {isScoring
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : hasRealScore
+              ? `${score}%`
+              : '–'}
         </span>
       </div>
 

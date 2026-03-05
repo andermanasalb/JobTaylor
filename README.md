@@ -239,3 +239,50 @@ El despliegue previsto es **Vercel** (frontend) + **Supabase Cloud** (DB/Auth).
 - [ ] "Olvide mi contrasena" / password reset
 - [ ] OAuth / Google login
 - [ ] Puntuacion de compatibilidad CV-oferta antes de tailorear
+
+---
+
+## Solución de problemas frecuentes
+
+### La app carga en blanco / no conecta a Supabase
+
+**Causa:** Los contenedores Docker de Supabase pierden el mapeo de puertos al host después de reinicios del sistema, hibernaciones, o sesiones largas. Docker los muestra como `running` pero no están accesibles desde `localhost`.
+
+**Solución:**
+
+```bash
+npx supabase stop
+# Si falla con "ports are not available", abre PowerShell como Administrador y ejecuta:
+net stop winnat
+# Luego en tu terminal normal:
+npx supabase start
+# Y de vuelta en la terminal de Administrador:
+net start winnat
+```
+
+**Prevención:** Ejecuta siempre `npx supabase stop` al terminar de programar y `npx supabase start` al empezar.
+
+---
+
+### Errores 400 al guardar en historial tras reiniciar Supabase
+
+**Causa:** Al hacer `supabase stop` + `supabase start`, la base de datos se restaura desde un backup que puede no incluir las migraciones más recientes, dejando tablas sin columnas nuevas.
+
+**Solución:** Aplica las migraciones manualmente:
+
+```bash
+npx supabase db reset
+```
+
+O si no quieres perder datos, aplica solo la columna que falta. Por ejemplo, si falta `job_url` en `history_entries`:
+
+```bash
+docker exec supabase_db_JobTaylor psql -U postgres -c \
+  "ALTER TABLE public.history_entries ADD COLUMN IF NOT EXISTS job_url text;"
+```
+
+**Prevención:** Después de cada `supabase start`, verifica el esquema con:
+
+```bash
+docker exec supabase_db_JobTaylor psql -U postgres -c "\d public.history_entries"
+```

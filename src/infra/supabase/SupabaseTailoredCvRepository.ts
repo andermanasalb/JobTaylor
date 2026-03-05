@@ -8,6 +8,9 @@ interface TailoredCvRow {
   user_id: string
   base_cv_id: string
   job_posting_id: string
+  job_title: string
+  job_description: string
+  score: number | null
   tailored_data: BaseCv
   gaps: string[]
   suggestions: string[]
@@ -20,6 +23,9 @@ function rowToDomain(row: TailoredCvRow): TailoredCv {
     id: row.id,
     baseCvId: row.base_cv_id,
     jobPostingId: row.job_posting_id,
+    jobTitle: row.job_title ?? '',
+    jobDescription: row.job_description ?? '',
+    score: row.score ?? null,
     tailoredData: row.tailored_data,
     gaps: row.gaps,
     suggestions: row.suggestions,
@@ -44,11 +50,14 @@ export class SupabaseTailoredCvRepository implements TailoredCvRepository {
         user_id: userId,
         base_cv_id: cv.baseCvId,
         job_posting_id: cv.jobPostingId,
+        job_title: cv.jobTitle,
+        job_description: cv.jobDescription,
+        score: cv.score,
         tailored_data: cv.tailoredData,
         gaps: cv.gaps,
         suggestions: cv.suggestions,
         guardrails_applied: true,
-      })
+      }, { onConflict: 'user_id,job_posting_id' })
       .select()
       .single()
 
