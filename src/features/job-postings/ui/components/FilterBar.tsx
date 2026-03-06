@@ -6,31 +6,19 @@ import { Badge } from '@/shared/components/ui/badge'
 import { Switch } from '@/shared/components/ui/switch'
 import { Label } from '@/shared/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/components/ui/select'
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/shared/components/ui/popover'
 import { Checkbox } from '@/shared/components/ui/checkbox'
-import type { WorkMode } from '../types/SearchListing'
-
-const WORK_MODES: WorkMode[] = ['Remote', 'Hybrid', 'On-site']
 
 interface FilterBarProps {
   query: string
   onQueryChange: (q: string) => void
-  // Ubicaciones disponibles derivadas de los resultados actuales
+  /** Locations derived from the current API results — used to populate the popover. */
   availableLocations: string[]
   selectedLocations: string[]
   onLocationsChange: (locs: string[]) => void
-  workMode: WorkMode | 'all'
-  onWorkModeChange: (wm: WorkMode | 'all') => void
   remoteOnly: boolean
   onRemoteOnlyChange: (v: boolean) => void
   onClear: () => void
@@ -43,15 +31,13 @@ export function FilterBar({
   availableLocations,
   selectedLocations,
   onLocationsChange,
-  workMode,
-  onWorkModeChange,
   remoteOnly,
   onRemoteOnlyChange,
   onClear,
   onSearch,
 }: FilterBarProps) {
   const { t } = useTranslation()
-  const hasFilters = query || selectedLocations.length > 0 || remoteOnly || workMode !== 'all'
+  const hasFilters = Boolean(query) || selectedLocations.length > 0 || remoteOnly
 
   function toggleLocation(loc: string) {
     if (selectedLocations.includes(loc)) {
@@ -85,7 +71,7 @@ export function FilterBar({
 
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Ubicación multi-select dinámico */}
+        {/* Location multi-select — triggers an API search per selected location */}
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 text-xs font-normal">
@@ -116,23 +102,7 @@ export function FilterBar({
           </PopoverContent>
         </Popover>
 
-        {/* Modalidad de trabajo */}
-        <Select
-          value={workMode}
-          onValueChange={v => onWorkModeChange(v as WorkMode | 'all')}
-        >
-          <SelectTrigger className="h-8 w-[130px] text-xs">
-            <SelectValue placeholder="Modalidad" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('filter.allModes')}</SelectItem>
-            {WORK_MODES.map(wm => (
-              <SelectItem key={wm} value={wm}>{t(`filter.workMode.${wm}`)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Remote toggle — acceso rápido */}
+        {/* Remote toggle */}
         <div className="flex items-center gap-2">
           <Switch
             id="remote-toggle"
@@ -145,7 +115,7 @@ export function FilterBar({
           </Label>
         </div>
 
-        {/* Limpiar filtros */}
+        {/* Clear filters */}
         {hasFilters && (
           <Button
             variant="ghost"

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { FileText, Download, ExternalLink, Search, X, Loader2, Trash2, Clock, AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
@@ -101,6 +102,7 @@ function formatDate(date: Date): string {
 
 export function HistoryPage() {
   const { historyRepository, tailoredCvRepository } = useAppDeps()
+  const navigate = useNavigate()
   const settings = useSettings()
   const photo = usePhoto()
   const generationQueue = useGenerationQueue()
@@ -301,7 +303,7 @@ export function HistoryPage() {
             value={regionFilter}
             onValueChange={setRegionFilter}
           >
-            <SelectTrigger className="h-8 w-[140px] text-xs">
+            <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs">
               <SelectValue placeholder="Region" />
             </SelectTrigger>
             <SelectContent>
@@ -387,18 +389,13 @@ export function HistoryPage() {
                     return (
                       <TableRow key={entry.id}>
                         <TableCell className="text-sm font-medium">
-                          {entry.url ? (
-                            <a
-                              href={entry.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="hover:text-primary transition-colors"
-                            >
-                              {entry.jobTitle}
-                            </a>
-                          ) : (
-                            <span>{entry.jobTitle}</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => navigate('/search', { state: { jobId: entry.jobId, jobTitle: entry.jobTitle } })}
+                            className="hover:text-primary transition-colors text-left"
+                          >
+                            {entry.jobTitle}
+                          </button>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {entry.company}
@@ -494,18 +491,13 @@ export function HistoryPage() {
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div>
-                        {entry.url ? (
-                          <a
-                            href={entry.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-foreground hover:text-primary transition-colors"
-                          >
-                            {entry.jobTitle}
-                          </a>
-                        ) : (
-                          <span className="text-sm font-medium text-foreground">{entry.jobTitle}</span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => navigate('/search', { state: { jobId: entry.jobId, jobTitle: entry.jobTitle } })}
+                           className="text-sm font-medium text-foreground hover:text-primary transition-colors text-left"
+                        >
+                          {entry.jobTitle}
+                        </button>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {entry.company} — {entry.region}
                         </p>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Eye, EyeOff, Lock } from 'lucide-react'
 import { Input } from '@/shared/components/ui/input'
 import { validatePassword } from '@/features/auth/domain/validatePassword'
+import { useTranslation } from 'react-i18next'
 
 interface PasswordInputProps {
   value: string
@@ -40,6 +41,20 @@ const STRENGTH_WIDTH: Record<string, string> = {
   strong: 'w-full',
 }
 
+const RULES_EN = [
+  'Minimum 12 characters',
+  'At least one uppercase letter',
+  'At least one lowercase letter',
+  'At least one number',
+  'At least one special character',
+]
+
+const STRENGTH_LABEL_EN: Record<string, string> = {
+  weak:   'Weak',
+  medium: 'Medium',
+  strong: 'Strong',
+}
+
 export function PasswordInput({
   value,
   onChange,
@@ -50,9 +65,14 @@ export function PasswordInput({
   ariaLabel = 'Contraseña',
 }: PasswordInputProps) {
   const [show, setShow] = useState(false)
+  const { i18n } = useTranslation()
+  const isEnglish = i18n.language === 'en'
 
   const validation = validatePassword(value)
   const failingErrors = new Set(validation.errors)
+
+  const rules = isEnglish ? RULES_EN : RULES
+  const strengthLabel = isEnglish ? STRENGTH_LABEL_EN : STRENGTH_LABEL
 
   return (
     <div className="flex flex-col gap-2">
@@ -75,7 +95,7 @@ export function PasswordInput({
           tabIndex={-1}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           onClick={() => setShow(v => !v)}
-          aria-label={show ? 'Ocultar' : 'Mostrar'}
+          aria-label={show ? (isEnglish ? 'Hide' : 'Ocultar') : (isEnglish ? 'Show' : 'Mostrar')}
           disabled={disabled}
         >
           {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -94,14 +114,14 @@ export function PasswordInput({
               />
             </div>
             <span className="text-xs text-muted-foreground w-10 text-right">
-              {value.length > 0 ? STRENGTH_LABEL[validation.strength] : ''}
+              {value.length > 0 ? strengthLabel[validation.strength] : ''}
             </span>
           </div>
 
           {/* Rule list */}
           <ul className="flex flex-col gap-0.5">
-            {RULES.map(rule => {
-              const passes = !failingErrors.has(rule)
+            {rules.map((rule, idx) => {
+              const passes = !failingErrors.has(RULES[idx])
               return (
                 <li
                   key={rule}

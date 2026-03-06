@@ -3,7 +3,7 @@ import { ArrowUpDown, Search as SearchIcon, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppDeps } from '@/app/AppDepsContext'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { SearchListing, WorkMode } from '../types/SearchListing'
+import type { SearchListing } from '../types/SearchListing'
 import type { BaseCv } from '@/features/cv-base/domain/BaseCv'
 import type { EnrichedJob } from '@/features/job-postings/application/ports/JobEnrichmentPort'
 import { useEnrichmentAdapter } from '@/features/job-postings/application/hooks/useEnrichmentAdapter'
@@ -59,9 +59,6 @@ export function SearchPage() {
   const [selectedLocations, setSelectedLocations] = useState<string[]>(() => {
     try { return JSON.parse(sessionStorage.getItem('search.locations') ?? '[]') } catch { return [] }
   })
-  const [workMode, setWorkMode] = useState<WorkMode | 'all'>(() =>
-    (sessionStorage.getItem('search.workMode') as WorkMode | 'all') ?? 'all'
-  )
   const [remoteOnly, setRemoteOnly] = useState<boolean>(() =>
     sessionStorage.getItem('search.remoteOnly') === 'true'
   )
@@ -125,9 +122,6 @@ export function SearchPage() {
   })
   const [enrichingJobId, setEnrichingJobId] = useState<string | null>(null)
 
-  // jobId pendiente de seleccionar desde History (se resuelve cuando allListings carga)
-  const pendingJobIdRef = useRef<string | null>(null)
-
   // Ref para el contenedor scrollable de la lista de jobs
   const listScrollRef = useRef<HTMLDivElement>(null)
 
@@ -154,9 +148,24 @@ export function SearchPage() {
   // Persistir todo el estado de búsqueda en sessionStorage
   useEffect(() => { sessionStorage.setItem('search.query', query) }, [query])
   useEffect(() => { sessionStorage.setItem('search.locations', JSON.stringify(selectedLocations)) }, [selectedLocations])
-  useEffect(() => { sessionStorage.setItem('search.workMode', workMode) }, [workMode])
   useEffect(() => { sessionStorage.setItem('search.remoteOnly', String(remoteOnly)) }, [remoteOnly])
   useEffect(() => { sessionStorage.setItem('search.sortBy', sortBy) }, [sortBy])
+
+  // Cuando cambia remoteOnly, hacer nueva búsqueda con el filtro
+  useEffect(() => {
+    setCurrentPage(1)
+    setApiHasMore(true)
+    setVisibleCount(PAGE_SIZE)
+    fetchListings(query || undefined, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
+  }, [remoteOnly])
+
+  // Cuando cambia la selección de ubicaciones, hacer nueva búsqueda en la API
+  useEffect(() => {
+    setCurrentPage(1)
+    setApiHasMore(true)
+    setVisibleCount(PAGE_SIZE)
+    fetchListings(query || undefined, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
+  }, [selectedLocations])
   useEffect(() => {
     if (selectedJob) sessionStorage.setItem('search.selectedJob', JSON.stringify(selectedJob))
     else sessionStorage.removeItem('search.selectedJob')
@@ -173,8 +182,15 @@ export function SearchPage() {
     sessionStorage.setItem('search.enrichedJobs', JSON.stringify(obj))
   }, [enrichedJobs])
 
-  // Core fetch — page=1 replaces list, page>1 appends
-  const fetchListings = useCallback(async (keywords?: string, page = 1) => {
+  // Core fetch — page=1 replaces list, page>1 appends.
+  // When `locations` has items, makes one parallel API call per location and merges (dedup by id).
+  // Returns the merged results for external use (e.g. pre-selecting from History).
+  const fetchListings = useCallback(async (
+    keywords?: string,
+    page = 1,
+    remote?: boolean,
+    locations?: string[],
+  ): Promise<SearchListing[]> => {
     if (page === 1) {
       setIsLoading(true)
       setFeedError(null)
@@ -182,28 +198,51 @@ export function SearchPage() {
       setIsLoadingMore(true)
     }
     try {
-      const results = await jobFeedPort.search({
-        keywords: keywords?.trim() || undefined,
-        page,
-      })
+      let results: SearchListing[]
+
+      if (locations && locations.length > 0) {
+        // One API call per location — run in parallel, then merge and deduplicate
+        const calls = locations.map(loc =>
+          jobFeedPort.search({ keywords: keywords?.trim() || undefined, page, remote, location: loc })
+        )
+        const allResults = await Promise.all(calls)
+        const seen = new Set<string>()
+        results = allResults.flat().filter(j => {
+          if (seen.has(j.id)) return false
+          seen.add(j.id)
+          return true
+        })
+      } else {
+        results = await jobFeedPort.search({
+          keywords: keywords?.trim() || undefined,
+          page,
+          remote,
+        })
+      }
+
       if (page === 1) {
         setAllListings(results)
       } else {
-        setAllListings(prev => [...prev, ...results])
+        setAllListings(prev => {
+          const existingIds = new Set(prev.map(j => j.id))
+          return [...prev, ...results.filter(j => !existingIds.has(j.id))]
+        })
       }
       setApiHasMore(results.length >= PAGE_SIZE && page < MAX_PAGES)
       setCurrentPage(page)
+      return results
     } catch (err) {
       console.error('Job feed error:', err)
       if (page === 1) {
         setFeedError(t('search.errorTitle'))
         setAllListings([])
       }
+      return []
     } finally {
       if (page === 1) setIsLoading(false)
       else setIsLoadingMore(false)
     }
-  }, [jobFeedPort])
+  }, [jobFeedPort, t])
 
   // Debounced search — resets to page 1
   function handleQueryChange(value: string) {
@@ -213,7 +252,7 @@ export function SearchPage() {
     setVisibleCount(PAGE_SIZE)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      fetchListings(value, 1)
+      fetchListings(value, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
     }, DEBOUNCE_MS)
   }
 
@@ -222,7 +261,7 @@ export function SearchPage() {
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
-    fetchListings(query, 1)
+    fetchListings(query, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
   }
 
   // Init
@@ -236,7 +275,7 @@ export function SearchPage() {
     // Restaurar búsqueda guardada — si ya hay resultados en caché los mostramos
     // y relanzamos la búsqueda en background para refrescar
     const savedQuery = sessionStorage.getItem('search.query') ?? ''
-    fetchListings(savedQuery || undefined, 1)
+    fetchListings(savedQuery || undefined, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
 
     listHistoryEntries(historyRepository)
       .then(entries => {
@@ -273,38 +312,38 @@ export function SearchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyRepository])
 
-  // Pre-select a job when navigating from History
+  // Pre-select a job when navigating from History.
+  // Uses jobFeedPort.search() directly so we never replace the user's current results.
   useEffect(() => {
-    const jobId = (location.state as { jobId?: string } | null)?.jobId
+    const state = location.state as { jobId?: string; jobTitle?: string } | null
+    const jobId = state?.jobId
+    const jobTitle = state?.jobTitle
     if (!jobId) return
 
-    // Limpiar el state para que no interfiera con futuras navegaciones
+    // Clear navigation state immediately — prevents the effect from re-running
+    // if allListings or other state changes later.
     navigate('/search', { replace: true, state: null })
 
-    // Si ya está en la lista actual, lo abrimos directamente
+    // Fast path: job is already in the visible list (e.g. user searched before)
     const match = allListings.find(j => j.id === jobId)
     if (match) {
       setSelectedJob(match)
       return
     }
 
-    // Si no está, guardamos el jobId y limpiamos la búsqueda para recargar todos los resultados
-    pendingJobIdRef.current = jobId
-    setQuery('')
-    sessionStorage.setItem('search.query', '')
-    fetchListings(undefined, 1)
+    // Slow path: search silently by title WITHOUT touching allListings
+    if (jobTitle) {
+      jobFeedPort.search({ keywords: jobTitle, page: 1 })
+        .then(results => {
+          const found = results.find(j => j.id === jobId) ?? results[0] ?? null
+          if (found) setSelectedJob(found)
+        })
+        .catch(() => { /* silent — non-critical */ })
+    }
+  // allListings is intentionally read from closure (stale-safe: navigate clears
+  // state immediately so this effect only runs once per navigation event).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
-
-  // Cuando allListings cambia, intentamos resolver el jobId pendiente
-  useEffect(() => {
-    if (!pendingJobIdRef.current || allListings.length === 0) return
-    const match = allListings.find(j => j.id === pendingJobIdRef.current)
-    if (match) {
-      setSelectedJob(match)
-      pendingJobIdRef.current = null
-    }
-  }, [allListings])
 
   // Ubicaciones únicas derivadas de los resultados actuales (ordenadas alfabéticamente)
   const availableLocations = useMemo(() => {
@@ -312,21 +351,11 @@ export function SearchPage() {
     return Array.from(locs).sort()
   }, [allListings])
 
-  // Limpiar selectedLocations que ya no estén en los resultados al cambiar búsqueda
-  useEffect(() => {
-    if (availableLocations.length === 0) return
-    setSelectedLocations(prev => prev.filter(l => availableLocations.includes(l)))
-  }, [availableLocations])
-
   // Filtros + ordenación (sobre todos los datos cargados de la API)
+  // Location and remote are now API-level filters — only remoteOnly is kept client-side
+  // as a secondary safety net (Adzuna heuristics aren't perfect).
   const filteredJobs = useMemo(() => {
     let results = [...allListings]
-    if (selectedLocations.length > 0) {
-      results = results.filter(j => selectedLocations.includes(j.location))
-    }
-    if (workMode !== 'all') {
-      results = results.filter(j => j.workMode === workMode)
-    }
     if (remoteOnly) {
       results = results.filter(j => j.workMode === 'Remote')
     }
@@ -339,12 +368,12 @@ export function SearchPage() {
       return new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime()
     })
     return results
-  }, [selectedLocations, workMode, remoteOnly, sortBy, allListings, jobScores])
+  }, [remoteOnly, sortBy, allListings, jobScores])
 
-  // Resetear visibleCount cuando cambian los filtros client-side
+  // Resetear visibleCount cuando cambian los filtros
   useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [selectedLocations, workMode, remoteOnly, sortBy])
+  }, [selectedLocations, remoteOnly, sortBy])
 
   // Jobs a renderizar (slice del conjunto filtrado)
   const displayedJobs = filteredJobs.slice(0, visibleCount)
@@ -366,13 +395,13 @@ export function SearchPage() {
       if (visibleCount < filteredJobs.length) {
         setVisibleCount(prev => prev + PAGE_SIZE)
       } else if (apiHasMore) {
-        fetchListings(query, currentPage + 1)
+        fetchListings(query, currentPage + 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
       }
     }
 
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
-  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
+  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, remoteOnly, fetchListings])
 
   // Seleccionar job: lanza enrichment y scoring on-demand con caché
   async function handleSelectJob(job: SearchListing) {
@@ -512,12 +541,11 @@ export function SearchPage() {
   function clearFilters() {
     setQuery('')
     setSelectedLocations([])
-    setWorkMode('all')
     setRemoteOnly(false)
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
-    fetchListings(undefined, 1)
+    fetchListings(undefined, 1, false, undefined)
   }
 
   return (
@@ -531,8 +559,6 @@ export function SearchPage() {
             availableLocations={availableLocations}
             selectedLocations={selectedLocations}
             onLocationsChange={setSelectedLocations}
-            workMode={workMode}
-            onWorkModeChange={setWorkMode}
             remoteOnly={remoteOnly}
             onRemoteOnlyChange={setRemoteOnly}
             onClear={clearFilters}
@@ -567,7 +593,7 @@ export function SearchPage() {
               title={t('search.errorTitle')}
               description={feedError}
             >
-              <Button variant="outline" size="sm" onClick={() => fetchListings(query, 1)}>
+              <Button variant="outline" size="sm" onClick={() => fetchListings(query, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)}>
                 {t('search.retry')}
               </Button>
             </EmptyState>

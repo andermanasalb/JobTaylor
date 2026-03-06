@@ -22,6 +22,7 @@
     "signIn": "Inicia sesión en tu cuenta",
     "createAccount": "Crea tu cuenta",
     "emailPlaceholder": "tu@email.com",
+    "password": "Contraseña",
     "accountCreated": "¡Cuenta creada!",
     "canSignIn": "Ya puedes iniciar sesión con tu nueva cuenta.",
     "signInButton": "Iniciar sesión",

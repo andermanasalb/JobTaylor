@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Scissors, Mail, Loader2, User, Sun, Moon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/shared/i18n/i18n'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { useAuthRepository } from '@/app/AppDepsContext'
@@ -9,6 +10,7 @@ import { PasswordInput } from '../components/PasswordInput'
 import { validatePassword } from '@/features/auth/domain/validatePassword'
 import { mapAuthError } from '../utils/authErrors'
 import { useTheme } from '@/shared/context/ThemeContext'
+import { cn } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
 
@@ -42,6 +44,11 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from ?? '/search'
 
   const [mode, setMode] = useState<Mode>('login')
+  const [selectedLang, setSelectedLang] = useState<'ES' | 'EN'>(() => {
+    const raw = localStorage.getItem('jobtaylor-settings')
+    const settings = raw ? JSON.parse(raw) : {}
+    return settings.outputLanguage || 'ES'
+  })
 
   // Form fields
   const [email, setEmail] = useState('')
@@ -80,6 +87,11 @@ export function LoginPage() {
 
   const canSubmit = !loading && !isLocked && (mode === 'login' ? loginFormValid : registerFormValid)
 
+  function handleLanguageChange(lang: 'ES' | 'EN') {
+    setSelectedLang(lang)
+    i18n.changeLanguage(lang === 'EN' ? 'en' : 'es')
+  }
+
   // ── Handlers ────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -97,16 +109,20 @@ export function LoginPage() {
         // Stamp activity so the inactivity check in AuthContext does not
         // immediately expire the session we just created (OWASP A07).
         localStorage.setItem('jobtaylor-last-activity', String(Date.now()))
-        navigate(from, { replace: true })
-      } else {
-        await authRepository.signUpWithEmail(trimmedEmail, password, name.trim())
-        // Ensure the default output language is ES for new accounts
+        // Save selected language to settings
         try {
           const raw = localStorage.getItem('jobtaylor-settings')
           const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-          if (!existing.outputLanguage) {
-            localStorage.setItem('jobtaylor-settings', JSON.stringify({ ...existing, outputLanguage: 'ES' }))
-          }
+          localStorage.setItem('jobtaylor-settings', JSON.stringify({ ...existing, outputLanguage: selectedLang }))
+        } catch { /* localStorage unavailable — silently ignore */ }
+        navigate(from, { replace: true })
+      } else {
+        await authRepository.signUpWithEmail(trimmedEmail, password, name.trim())
+        // Save selected language to settings
+        try {
+          const raw = localStorage.getItem('jobtaylor-settings')
+          const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+          localStorage.setItem('jobtaylor-settings', JSON.stringify({ ...existing, outputLanguage: selectedLang }))
         } catch { /* localStorage unavailable — silently ignore */ }
         setRegistered(true)
       }
@@ -139,6 +155,34 @@ export function LoginPage() {
 
   return (
     <div className="flex h-dvh items-center justify-center bg-background px-4">
+      {/* Language selector — fixed top-right */}
+      <div className="fixed top-4 right-4 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => handleLanguageChange('ES')}
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors",
+            selectedLang === 'ES'
+              ? "bg-primary text-primary-foreground"
+              : "border border-border bg-background text-muted-foreground hover:text-foreground"
+          )}
+        >
+          ES
+        </button>
+        <button
+          type="button"
+          onClick={() => handleLanguageChange('EN')}
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors",
+            selectedLang === 'EN'
+              ? "bg-primary text-primary-foreground"
+              : "border border-border bg-background text-muted-foreground hover:text-foreground"
+          )}
+        >
+          EN
+        </button>
+      </div>
+
       {/* Theme toggle — fixed bottom-left */}
       <button
         type="button"
@@ -229,6 +273,8 @@ export function LoginPage() {
               showRequirements={mode === 'register'}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               disabled={disabled}
+              placeholder={t('auth.password')}
+              ariaLabel={t('auth.password')}
             />
 
             {/* Confirm password (register only) */}
