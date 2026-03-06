@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { clearAppStorage } from './fixtures'
 
 /**
- * Settings page tests — AI mode, export format, template, language.
+ * Settings page tests — export format, template, language, strictness, photo.
  * Settings are persisted in localStorage under 'jobtaylor-settings'.
  */
 
@@ -21,33 +21,11 @@ test.describe('Settings page', () => {
   })
 
   test('shows all settings sections', async ({ page }) => {
-    await expect(page.getByText('AI Processing Mode')).toBeVisible()
     await expect(page.getByText('Output Language')).toBeVisible()
     await expect(page.getByText('CV Template')).toBeVisible()
     await expect(page.getByText('Tailoring Strictness')).toBeVisible()
     await expect(page.getByText('Export Defaults')).toBeVisible()
     await expect(page.getByText('Profile Photo')).toBeVisible()
-  })
-
-  test('Cloud processing mode shows confirmation dialog', async ({ page }) => {
-    await page.getByRole('button', { name: 'Cloud' }).click()
-    await expect(page.getByRole('alertdialog')).toBeVisible()
-    await expect(page.getByText('Switch to Cloud Processing?')).toBeVisible()
-  })
-
-  test('cancelling cloud dialog stays on Local mode', async ({ page }) => {
-    await page.getByRole('button', { name: 'Cloud' }).click()
-    await expect(page.getByRole('alertdialog')).toBeVisible()
-    await page.getByRole('button', { name: 'Stay on Local' }).click()
-    await expect(page.getByRole('alertdialog')).not.toBeVisible()
-  })
-
-  test('confirming cloud dialog switches to Cloud mode', async ({ page }) => {
-    await page.getByRole('button', { name: 'Cloud' }).click()
-    await page.getByRole('button', { name: 'Switch to Cloud' }).click()
-    await expect(page.getByRole('alertdialog')).not.toBeVisible()
-    // After confirming, page should remain on settings
-    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
   })
 
   test('can select classic template', async ({ page }) => {

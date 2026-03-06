@@ -1,16 +1,22 @@
 import { test, expect } from '@playwright/test'
-import { clearAppStorage } from './fixtures'
+import { clearAppStorage, setupAdzunaMock, setupSupabaseHistoryMock } from './fixtures'
 
 /**
  * Search page tests — filtering, saving/unsaving jobs, job detail panel.
- * Mock listings are always present (no network needed).
+ * Adzuna API calls are intercepted and replaced with mock data so tests
+ * are deterministic regardless of real API keys in the environment.
  */
 
 test.describe('Search page', () => {
   test.beforeEach(async ({ page }) => {
+    // Intercept Adzuna API before navigating so no real network calls are made.
+    await setupAdzunaMock(page)
     // Navigate first so localStorage is accessible, then clear app keys only.
     await page.goto('/search')
     await clearAppStorage(page)
+    // Mock Supabase history GET → [] so listHistoryEntries resolves instantly with
+    // clean state (no race condition) and does not interfere with other test files.
+    await setupSupabaseHistoryMock(page)
     await page.reload()
     // Wait for the loading skeleton to finish (600ms timer in SearchPage)
     await expect(page.getByText(/\d+ results/)).toBeVisible({ timeout: 5000 })
@@ -23,15 +29,15 @@ test.describe('Search page', () => {
   })
 
   test('filters by keyword', async ({ page }) => {
-    await page.getByPlaceholder('Search by role, title, or keyword...').fill('Backend')
+    await page.getByPlaceholder('Search by role, title or technology...').fill('Backend')
     await expect(page.getByRole('heading', { name: 'Backend Engineer' })).toBeVisible()
     // Unrelated job should not be visible
     await expect(page.getByRole('heading', { name: 'Senior Software Engineer' })).not.toBeVisible()
   })
 
   test('clear filters restores all results', async ({ page }) => {
-    await page.getByPlaceholder('Search by role, title, or keyword...').fill('zzznomatch')
-    await expect(page.getByText('No jobs found')).toBeVisible()
+    await page.getByPlaceholder('Search by role, title or technology...').fill('zzznomatch')
+    await expect(page.getByText('No results')).toBeVisible()
 
     await page.getByRole('button', { name: 'Clear filters' }).click()
     await expect(page.getByRole('heading', { name: 'Senior Software Engineer' })).toBeVisible()

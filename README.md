@@ -1,48 +1,51 @@
 # JobTaylor
 
-**JobTaylor** es una aplicación web que ayuda a los candidatos a adaptar su CV a ofertas de empleo concretas usando inteligencia artificial, con guardrails estrictos que garantizan que el CV resultante nunca inventa experiencia ni datos falsos.
+**JobTaylor** es una aplicación web que ayuda a los candidatos a adaptar su CV a ofertas de empleo concretas usando inteligencia artificial. La IA reescribe y reordena el contenido del CV Base para destacar lo más relevante de cara a cada oferta — sin inventar experiencia, títulos, fechas ni certificaciones.
 
 ---
 
-## Descripcion general
+## Descripción general
 
-El flujo principal de la aplicación es:
+El flujo principal de la aplicación es el siguiente:
 
-1. El usuario crea su **CV Base** con su experiencia real (texto, PDF o DOCX).
-2. Busca **ofertas de empleo reales** via la API de Adzuna con filtros personalizados.
-3. Selecciona una oferta y lanza el **proceso de tailoring**: la IA reescribe y reordena el CV Base para destacar lo más relevante para esa oferta, sin inventar nada.
-4. Descarga el CV adaptado en **PDF o DOCX**.
-5. Consulta el **historial** de CVs generados, con filtros por estado, región y búsqueda de texto.
+1. El usuario crea su **CV Base** introduciendo su experiencia real (o importando desde PDF o DOCX).
+2. Busca **ofertas de empleo reales** a través de la API de Adzuna, con filtros por palabras clave, ubicación (buscador de ciudad libre) y modalidad remota.
+3. Selecciona una oferta para ver sus detalles enriquecidos por IA y su puntuación de compatibilidad con su CV.
+4. Lanza el **proceso de tailoring**: la IA adapta el CV Base a la oferta seleccionada, respetando guardrails estrictos que impiden fabricar información.
+5. Descarga el CV adaptado en **PDF, DOCX o Markdown**.
+6. Consulta el **historial** de CVs generados, con filtros por estado, región y búsqueda de texto.
 
 ---
 
-## Stack tecnologico
+## Stack tecnológico
 
-| Capa | Tecnologia |
+| Capa | Tecnología |
 |---|---|
 | Frontend | React 19 + TypeScript + Vite |
 | Estilos | Tailwind CSS v4 + shadcn/ui + Radix UI |
 | Routing | React Router v7 |
 | Auth + DB | Supabase (local: Docker via Supabase CLI) |
-| IA local | Ollama (`qwen2.5:0.5b`) via proxy Express |
-| Busqueda de ofertas | Adzuna API |
-| Export | jsPDF (PDF) + docx (DOCX) — client-side |
+| IA (tailoring + scoring + parsing) | Google Gemini (`gemini-3.1-flash-lite-preview`) via proxy Express |
+| Enriquecimiento de ofertas | Tavily API + Gemini (via proxy) |
+| Búsqueda de ofertas | Adzuna API (client-side) |
+| Exportación | jsPDF (PDF) + docx (DOCX) — completamente client-side |
 | i18n | react-i18next (ES / EN) |
 | Tests unitarios | Vitest + Testing Library |
 | Tests E2E | Playwright |
-| Calidad | ESLint + Prettier + Husky (pre-commit/pre-push) |
+| Calidad de código | ESLint + Prettier + Husky (pre-commit / pre-push) |
 
 ---
 
-## Instalacion y ejecucion
+## Instalación y ejecución
 
 ### Requisitos previos
 
 - Node.js >= 18
 - Docker Desktop (para Supabase local)
 - [Supabase CLI](https://supabase.com/docs/guides/cli)
-- [Ollama](https://ollama.com) con el modelo descargado: `ollama pull qwen2.5:0.5b`
-- Cuenta gratuita en [Adzuna Developer](https://developer.adzuna.com) para obtener `App ID` y `App Key`
+- Cuenta en [Adzuna Developer](https://developer.adzuna.com) — obtener `App ID` y `App Key`
+- Clave de API de [Google AI Studio](https://aistudio.google.com) — para Gemini
+- Clave de API de [Tavily](https://tavily.com) — para el enriquecimiento de ofertas
 
 ### 1. Clonar e instalar dependencias
 
@@ -54,42 +57,67 @@ npm install
 
 ### 2. Variables de entorno
 
-Crear un fichero `.env.local` en la raiz del proyecto (nunca subir a git):
+Crear un fichero `.env.local` en la raíz del proyecto (nunca subir a git):
 
 ```env
 # Supabase local
-VITE_SUPABASE_URL=http://localhost:54321
+VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_ANON_KEY=<anon key que muestra supabase start>
 VITE_USE_SUPABASE=true
 
-# Adzuna (busqueda de ofertas)
+# Adzuna (búsqueda de ofertas — client-side)
 VITE_ADZUNA_APP_ID=<tu app id>
 VITE_ADZUNA_APP_KEY=<tu app key>
 
-# Proveedor de IA: fake | ollama
-VITE_AI_PROVIDER=ollama
-
-# Proxy Ollama (no cambiar si usas la configuracion por defecto)
+# URL del proxy local (no cambiar si usas la configuración por defecto)
 VITE_PROXY_URL=http://localhost:3001
+
+# Gemini (solo proxy — nunca expuesto al frontend)
+GEMINI_API_KEY=<tu clave de API>
+GEMINI_MODEL=gemini-3.1-flash-lite-preview
+
+# Tavily — enriquecimiento de ofertas (solo proxy)
+TAVILY_API_KEY=<tu clave de API>
+
+# Origen CORS permitido (por defecto el servidor de desarrollo de Vite)
+ALLOWED_ORIGIN=http://localhost:5173
 ```
+
+> Las claves de Gemini y Tavily solo se leen en el proceso Node del proxy, nunca llegan al bundle del navegador.
 
 ### 3. Arrancar Supabase local
 
 ```bash
 npx supabase start
-# Anota la "anon key" que aparece y ponla en .env.local
+# Anota la "anon key" que aparece y ponla en VITE_SUPABASE_ANON_KEY del .env.local
 ```
 
-### 4. Arrancar el proxy de Ollama
+Si es la primera vez o tras un `supabase stop`, aplica las migraciones:
 
-El proxy es un servidor Express que actua de intermediario entre el frontend y Ollama, evitando problemas de CORS:
+```bash
+npx supabase db reset
+```
+
+### 4. Arrancar el proxy de IA
+
+El proxy es un servidor Express que actúa de intermediario entre el frontend y los servicios de IA (Gemini y Tavily), manteniendo las claves de API fuera del navegador:
 
 ```bash
 npm run proxy
 # Arranca en http://localhost:3001
 ```
 
-### 5. Arrancar la aplicacion
+El proxy expone los siguientes endpoints:
+
+| Endpoint | Función |
+|---|---|
+| `POST /tailor` | Genera el CV adaptado con guardrails (Gemini) |
+| `POST /enrich` | Enriquece una oferta a partir de su URL (Tavily + Gemini) |
+| `POST /score` | Calcula la compatibilidad CV ↔ oferta, 0-100 (Gemini) |
+| `POST /parse-cv` | Analiza texto de CV e infiere estructura JSON (Gemini) |
+| `GET  /health` | Comprueba que el proxy está activo |
+
+### 5. Arrancar la aplicación
 
 ```bash
 npm run dev
@@ -103,93 +131,116 @@ npm run dev
 ```
 JobTaylor/
 ├── src/
-│   ├── app/                  # Composition root, router, contextos globales
-│   ├── features/             # Feature slices (dominio + casos de uso + UI por feature)
-│   │   ├── auth/             # Login, registro, validacion OWASP
-│   │   ├── cv-base/          # CV Base CRUD (upload PDF/DOCX, edicion)
-│   │   ├── job-postings/     # Busqueda de ofertas (Adzuna), infinite scroll
-│   │   ├── tailoring/        # Generacion de CV adaptado con IA
+│   ├── app/                  # Composition root, router, contextos globales (AppDepsContext)
+│   ├── features/             # Feature slices — cada uno con domain/ + application/ + ui/
+│   │   ├── auth/             # Login, registro, validación OWASP
+│   │   ├── cv-base/          # CV Base CRUD (editor, upload PDF/DOCX, vista previa)
+│   │   ├── job-postings/     # Búsqueda de ofertas (Adzuna), filtros, infinite scroll
+│   │   ├── tailoring/        # Generación de CV adaptado con IA
 │   │   ├── history/          # Historial de CVs generados
-│   │   └── settings/         # Preferencias del usuario (idioma, tema, IA)
+│   │   └── settings/         # Preferencias del usuario
 │   ├── infra/                # Implementaciones de puertos (adaptadores)
-│   │   ├── ai/               # OllamaAiClient, FakeAiClient
-│   │   ├── export/           # Exportacion PDF y DOCX
-│   │   ├── job-feed/         # Adzuna API client
+│   │   ├── ai/               # GeminiAiClient (producción), FakeAiClient (tests)
+│   │   ├── enrichment/       # GeminiEnrichmentAdapter (producción), FakeEnrichmentAdapter (tests)
+│   │   ├── scoring/          # GeminiScoringAdapter (producción), FakeScoringAdapter (tests)
+│   │   ├── cv-parser/        # Importación de CV desde texto / PDF / DOCX
+│   │   ├── export/           # Exportación a PDF y DOCX
+│   │   ├── job-feed/         # Cliente de la API de Adzuna
 │   │   ├── memory/           # Repositorios in-memory (tests)
-│   │   └── supabase/         # Repositorios Supabase (produccion)
-│   └── shared/               # Componentes y utilidades transversales
+│   │   └── supabase/         # Repositorios Supabase (producción)
+│   └── shared/               # Componentes y utilidades transversales, i18n
 ├── proxy/
-│   └── server.cjs            # Proxy Express para Ollama (evita CORS)
+│   └── server.cjs            # Proxy Express (Gemini + Tavily)
 ├── supabase/
-│   └── migrations/           # Migraciones SQL con RLS
+│   └── migrations/           # Migraciones SQL con Row Level Security
 ├── e2e/                      # Tests E2E con Playwright
-└── docs/                     # Documentacion adicional y ADRs
+└── docs/                     # ADRs y documentación adicional
 ```
 
 La arquitectura sigue **Clean Architecture con Ports & Adapters**:
 
 ```
-UI -> application (casos de uso) -> domain (logica pura)
-                                         ^
-infra implementa los puertos        (sin dependencias externas)
+UI → application (casos de uso) → domain (lógica pura)
+                                         ↑
+infra implementa los puertos       (sin dependencias externas)
 ```
 
-Cada feature sigue la estructura `domain/ | application/ | ui/`. La capa de dominio no tiene dependencias de React, Supabase ni ninguna libreria externa.
+La capa de dominio no tiene dependencias de React, Supabase ni ninguna librería externa. La composición de dependencias se realiza en `src/app/AppDepsContext.tsx`.
 
 ---
 
 ## Funcionalidades principales
 
-### Autenticacion
-- Registro e inicio de sesion con email/password via Supabase Auth
-- Validacion de contrasena siguiendo criterios OWASP (minimo 12 caracteres, mayusculas, minusculas, numeros y caracteres especiales)
-- Barra de fortaleza de contrasena en tiempo real
-- Rate limiting frontend (3 intentos fallidos → bloqueo de 60 segundos)
-- Row Level Security (RLS): cada usuario solo accede a sus propios datos
-- Modo claro/oscuro con persistencia
+### Autenticación
+
+- Registro e inicio de sesión con email y contraseña via Supabase Auth.
+- Validación de contraseña con criterios OWASP: mínimo 12 caracteres, mayúsculas, minúsculas, números y caracteres especiales.
+- Barra de fortaleza de contraseña en tiempo real con checklist de requisitos.
+- Rate limiting en frontend: 3 intentos fallidos generan un bloqueo de 60 segundos.
+- Sin enumeración de usuarios: los mensajes de error nunca revelan si un email existe.
+- Row Level Security (RLS): cada usuario solo accede a sus propios datos.
 
 ### CV Base
-- Creacion y edicion del CV estructurado (experiencia, educacion, skills, idiomas, enlaces)
-- Importacion desde PDF o DOCX
-- El CV se almacena como JSON estructurado, no como fichero
 
-### Busqueda de ofertas
-- Busqueda real de ofertas via **Adzuna API**
-- Filtros por palabras clave, ubicacion y categoria
-- Infinite scroll con paginacion
-- Cada oferta tiene boton directo para lanzar el tailoring
+- Editor estructurado: información personal, resumen, experiencia, educación, habilidades, idiomas y enlaces.
+- Importación desde PDF, DOCX o texto plano: el proxy analiza el contenido con Gemini e infiere la estructura JSON.
+- Vista previa del CV renderizada en tiempo real.
+- Autoguardado en Supabase.
+
+### Búsqueda de ofertas
+
+- Búsqueda real de ofertas de empleo via la **API de Adzuna**.
+- Filtros por palabras clave, modalidad (remoto) y ubicación.
+- El filtro de ubicación es un **combobox con texto libre**: el usuario puede escribir cualquier ciudad (incluyendo ciudades que no aparezcan en los resultados iniciales), con sugerencias basadas en los resultados cargados.
+- Infinite scroll con paginación automática.
+- Puntuación de compatibilidad CV ↔ oferta calculada por Gemini al seleccionar cada oferta.
+- Enriquecimiento de la oferta: Tavily extrae el contenido completo de la URL de la oferta y Gemini lo estructura (requisitos imprescindibles, deseables, stack tecnológico, información sobre la empresa).
 
 ### Tailoring con IA
-- La IA recibe el CV Base en JSON y la descripcion de la oferta
-- Reescribe y reordena el contenido para destacar lo relevante
-- **Guardrails estrictos**: nunca inventa experiencia, titulos, fechas ni certificaciones
-- Si la oferta requiere algo que el candidato no tiene, lo indica como gap, no lo fabrica
-- Cola de generacion global: se pueden encolar multiples tailorings
-- Soporte para **Ollama** (local, sin coste) y **FakeAiClient** (tests)
 
-### Exportacion
-- Descarga del CV adaptado en **PDF** o **DOCX**
-- Generacion completamente client-side (sin servidor)
+- La IA recibe el CV Base en JSON y la descripción de la oferta (original y/o enriquecida).
+- Reescribe y reordena el contenido para destacar lo más relevante para esa oferta.
+- **Guardrails estrictos**: nunca inventa experiencia, empleadores, títulos, fechas, títulos académicos ni certificaciones.
+- Si la oferta requiere algo que el candidato no tiene, la IA lo indica como brecha (*gap*) en lugar de fabricarlo.
+- Cola de generación global: se pueden encolar múltiples tailorings en paralelo mientras se navega por la aplicación.
+- Nivel de fidelidad configurable (slider 0-100%): controla cuánta libertad creativa tiene la IA.
+
+### Exportación
+
+- Descarga del CV adaptado en **PDF**, **DOCX** o **Markdown**.
+- Generación completamente client-side: sin servidor adicional, sin subida de datos.
+- Tres plantillas visuales disponibles: modern, classic y minimal.
+- Soporte para foto de perfil opcional en el CV exportado.
 
 ### Historial
-- Lista de todos los CVs generados con su estado (`saved`, `generating`, `queued`, `exported`)
-- Filtros por estado, region y busqueda de texto libre
-- Los titulos de oferta son enlaces directos a la oferta original
-- Eliminacion individual con confirmacion
 
-### Internacionalizacion
-- Interfaz disponible en **Espanol** e **Ingles**
-- Selector de idioma en Settings; el CV generado respeta el idioma configurado
+- Lista de todas las ofertas guardadas y CVs generados, con su estado: `saved`, `generating`, `queued`, `generated`, `exported`.
+- Filtros por estado, región y búsqueda de texto libre.
+- Los títulos de oferta son enlaces directos a la oferta original.
+- Eliminación individual con diálogo de confirmación.
+
+### Ajustes
+
+- **Idioma de salida**: Español o Inglés (afecta a la interfaz y al contenido generado por la IA).
+- **Plantilla de CV**: selección visual entre modern, classic y minimal.
+- **Nivel de fidelidad**: slider que controla la strictness del tailoring.
+- **Formato de exportación por defecto**: PDF, DOCX o Markdown.
+- **Foto de perfil**: subida y recorte de imagen opcional para incluir en el CV exportado.
+
+### Internacionalización
+
+- Interfaz completamente disponible en **Español** e **Inglés**.
+- El cambio de idioma en Settings actualiza la UI al instante sin recargar la página.
 
 ---
 
 ## Comandos disponibles
 
 ```bash
-npm run dev          # Arranca el servidor de desarrollo (Vite)
-npm run proxy        # Arranca el proxy Express para Ollama
-npm run build        # Build de produccion (tsc + vite build)
-npm run preview      # Preview del build de produccion
+npm run dev          # Arranca el servidor de desarrollo (Vite) en http://localhost:5173
+npm run proxy        # Arranca el proxy Express de IA en http://localhost:3001
+npm run build        # Build de producción (tsc + vite build)
+npm run preview      # Preview del build de producción
 
 npm run test         # Tests unitarios (Vitest)
 npm run test:watch   # Tests unitarios en modo watch
@@ -199,8 +250,8 @@ npm run lint         # ESLint
 npm run typecheck    # TypeScript sin emitir (tsc --noEmit)
 npm run format       # Prettier
 
-npm run quality      # lint + typecheck + test (gate de calidad)
-npm run verify       # quality + test:e2e + build (gate completo)
+npm run quality      # lint + typecheck + test (gate de calidad — ejecutado en pre-commit)
+npm run verify       # quality + test:e2e + build (gate completo — ejecutado en pre-push)
 ```
 
 ---
@@ -208,81 +259,55 @@ npm run verify       # quality + test:e2e + build (gate completo)
 ## Tests
 
 ### Unitarios (Vitest)
-- Cubren logica de dominio y casos de uso
-- Usan repositorios in-memory y `FakeAiClient` — sin red, sin Supabase
-- Se ejecutan con `npm run test`
+
+- Cubren la lógica de dominio y los casos de uso de application.
+- Usan repositorios in-memory y clientes de IA falsos (`FakeAiClient`, `FakeScoringAdapter`, `FakeEnrichmentAdapter`) — sin red, sin Supabase, sin Gemini.
+- Se ejecutan con `npm run test`.
 
 ### E2E (Playwright)
-- Cubren el flujo completo con autenticacion real contra Supabase local
-- Incluyen: registro, login, edicion de CV, busqueda de ofertas, tailoring y exportacion
-- Se ejecutan con `npm run test:e2e`
+
+- Cubren el flujo completo con autenticación real contra Supabase local.
+- Incluyen: registro, login, edición de CV, búsqueda de ofertas, guardado, tailoring y exportación.
+- Se ejecutan con `npm run test:e2e`.
 
 ### Calidad automatizada
-- **Husky pre-commit**: ejecuta `npm run quality` antes de cada commit
-- **Husky pre-push**: ejecuta `npm run verify` antes de cada push
 
----
-
-## Despliegue
-
-> Pendiente — ver seccion de roadmap.
-
-El despliegue previsto es **Vercel** (frontend) + **Supabase Cloud** (DB/Auth).
-
----
-
-## Roadmap
-
-- [ ] Migracion a Supabase Cloud
-- [ ] Deploy en Vercel
-- [ ] Proveedor de IA cloud (Gemini / OpenAI) como alternativa a Ollama
-- [ ] "Olvide mi contrasena" / password reset
-- [ ] OAuth / Google login
-- [ ] Puntuacion de compatibilidad CV-oferta antes de tailorear
+- **Husky pre-commit**: ejecuta `npm run quality` (lint + typecheck + tests unitarios) antes de cada commit.
+- **Husky pre-push**: ejecuta `npm run verify` (quality + E2E + build) antes de cada push.
 
 ---
 
 ## Solución de problemas frecuentes
 
-### La app carga en blanco / no conecta a Supabase
+### La app carga en blanco o no conecta a Supabase
 
-**Causa:** Los contenedores Docker de Supabase pierden el mapeo de puertos al host después de reinicios del sistema, hibernaciones, o sesiones largas. Docker los muestra como `running` pero no están accesibles desde `localhost`.
+Los contenedores Docker de Supabase pueden perder el mapeo de puertos al host tras reinicios del sistema o hibernaciones. Docker los muestra como `running` pero no son accesibles desde `localhost`.
 
 **Solución:**
 
 ```bash
 npx supabase stop
-# Si falla con "ports are not available", abre PowerShell como Administrador y ejecuta:
+npx supabase start
+```
+
+Si falla con "ports are not available" (Windows), abre PowerShell como Administrador y ejecuta:
+
+```powershell
 net stop winnat
 # Luego en tu terminal normal:
-npx supabase start
+# npx supabase start
 # Y de vuelta en la terminal de Administrador:
 net start winnat
 ```
 
-**Prevención:** Ejecuta siempre `npx supabase stop` al terminar de programar y `npx supabase start` al empezar.
+### Errores al guardar tras reiniciar Supabase
 
----
-
-### Errores 400 al guardar en historial tras reiniciar Supabase
-
-**Causa:** Al hacer `supabase stop` + `supabase start`, la base de datos se restaura desde un backup que puede no incluir las migraciones más recientes, dejando tablas sin columnas nuevas.
-
-**Solución:** Aplica las migraciones manualmente:
+Si las migraciones no se han aplicado correctamente, algunas tablas pueden estar incompletas. Solución:
 
 ```bash
 npx supabase db reset
 ```
 
-O si no quieres perder datos, aplica solo la columna que falta. Por ejemplo, si falta `job_url` en `history_entries`:
+### El proxy devuelve error 503
 
-```bash
-docker exec supabase_db_JobTaylor psql -U postgres -c \
-  "ALTER TABLE public.history_entries ADD COLUMN IF NOT EXISTS job_url text;"
-```
-
-**Prevención:** Después de cada `supabase start`, verifica el esquema con:
-
-```bash
-docker exec supabase_db_JobTaylor psql -U postgres -c "\d public.history_entries"
-```
+Asegúrate de que `GEMINI_API_KEY` y `TAVILY_API_KEY` están configuradas en `.env.local` y que has arrancado el proxy con `npm run proxy` (que carga automáticamente el fichero `.env.local`).

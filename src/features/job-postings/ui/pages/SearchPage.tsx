@@ -94,6 +94,11 @@ export function SearchPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Pool acumulativo de ciudades normalizadas vistas en resultados sin filtro.
+  // Solo crece — nunca se vacía cuando el usuario activa un filtro de ubicación,
+  // de modo que todas las opciones permanecen visibles en el dropdown.
+  const [locationPool, setLocationPool] = useState<string[]>([])
+
   // CV Base — stored as a promise so handleSelectJob can always await it,
   // even if the user clicks a job card before the async load finishes.
   const baseCvPromiseRef = useRef<Promise<BaseCv | null>>(Promise.resolve(null))
@@ -345,10 +350,24 @@ export function SearchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
-  // Ubicaciones únicas derivadas de los resultados actuales (ordenadas alfabéticamente)
-  const availableLocations = useMemo(() => {
-    const locs = new Set(allListings.map(j => j.location).filter(Boolean))
-    return Array.from(locs).sort()
+  // Acumula ciudades normalizadas en locationPool solo cuando no hay filtro activo.
+  // Normalización: toma el primer segmento antes de la coma (ej. "Madrid, Community of Madrid" → "Madrid").
+  // El pool nunca se vacía al filtrar, así que el dropdown siempre muestra todas las opciones vistas.
+  useEffect(() => {
+    if (selectedLocations.length > 0) return
+    setLocationPool(prev => {
+      const pool = new Set(prev)
+      allListings.forEach(j => {
+        if (!j.location) return
+        const city = j.location.split(',')[0].trim()
+        if (city) pool.add(city)
+      })
+      return Array.from(pool).sort()
+    })
+  // allListings es el único trigger. selectedLocations se lee del closure actual
+  // (correcto tras cada render) pero no se lista como dep para no relanzar el
+  // efecto solo por cambios en la selección — fetchListings ya lo hace.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allListings])
 
   // Filtros + ordenación (sobre todos los datos cargados de la API)
@@ -556,7 +575,7 @@ export function SearchPage() {
           <FilterBar
             query={query}
             onQueryChange={handleQueryChange}
-            availableLocations={availableLocations}
+            availableLocations={locationPool}
             selectedLocations={selectedLocations}
             onLocationsChange={setSelectedLocations}
             remoteOnly={remoteOnly}

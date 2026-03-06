@@ -9,8 +9,10 @@ import { clearAppStorage } from './fixtures'
 test.describe('Sidebar navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    // Clear only app-owned keys; preserve Supabase auth tokens
+    // Clear only app-owned keys; preserve Supabase auth tokens.
+    // Then reload so i18n re-initialises with the English setting written by clearAppStorage.
     await clearAppStorage(page)
+    await page.reload()
     // Wait for the app to settle past the loading skeleton
     await page.waitForURL(/\/search/)
   })
@@ -19,7 +21,7 @@ test.describe('Sidebar navigation', () => {
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Search' }).click()
     await expect(page).toHaveURL(/\/search/)
     // Results or loading indicator is visible
-    await expect(page.getByPlaceholder('Search by role, title, or keyword...')).toBeVisible()
+    await expect(page.getByPlaceholder('Search by role, title or technology...')).toBeVisible()
   })
 
   test('navigates to CV Base page', async ({ page }) => {

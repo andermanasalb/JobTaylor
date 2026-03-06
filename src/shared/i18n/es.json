@@ -61,6 +61,8 @@
     "search": "Buscar",
     "location": "Ubicación",
     "noLocations": "Sin resultados cargados",
+    "typeCity": "Escribe una ciudad...",
+    "addCity": "Añadir \"{{city}}\"",
     "allModes": "Todas",
     "remoteOnly": "Solo remoto",
     "clear": "Limpiar",

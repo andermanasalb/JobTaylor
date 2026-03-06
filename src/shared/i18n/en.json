@@ -61,6 +61,8 @@
     "search": "Search",
     "location": "Location",
     "noLocations": "No results loaded",
+    "typeCity": "Type a city...",
+    "addCity": "Add \"{{city}}\"",
     "allModes": "All",
     "remoteOnly": "Remote only",
     "clear": "Clear",

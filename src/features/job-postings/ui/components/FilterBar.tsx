@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/shared/components/ui/input'
@@ -15,7 +16,7 @@ import { Checkbox } from '@/shared/components/ui/checkbox'
 interface FilterBarProps {
   query: string
   onQueryChange: (q: string) => void
-  /** Locations derived from the current API results — used to populate the popover. */
+  /** Locations derived from the current API results — used as suggestions. */
   availableLocations: string[]
   selectedLocations: string[]
   onLocationsChange: (locs: string[]) => void
@@ -37,13 +38,54 @@ export function FilterBar({
   onSearch,
 }: FilterBarProps) {
   const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [locationSearch, setLocationSearch] = useState('')
+
   const hasFilters = Boolean(query) || selectedLocations.length > 0 || remoteOnly
+
+  function handleOpenChange(isOpen: boolean) {
+    setOpen(isOpen)
+    if (!isOpen) setLocationSearch('')
+  }
 
   function toggleLocation(loc: string) {
     if (selectedLocations.includes(loc)) {
       onLocationsChange(selectedLocations.filter(l => l !== loc))
     } else {
       onLocationsChange([...selectedLocations, loc])
+    }
+  }
+
+  const searchTrimmed = locationSearch.trim()
+
+  // Suggestions from the pool filtered by the typed text (excluding already selected)
+  const filteredSuggestions = availableLocations.filter(
+    loc =>
+      !selectedLocations.includes(loc) &&
+      loc.toLowerCase().includes(searchTrimmed.toLowerCase()),
+  )
+
+  // True when the typed text doesn't match any existing option (neither selected nor in pool)
+  const isNewCity =
+    searchTrimmed.length > 0 &&
+    !availableLocations.some(loc => loc.toLowerCase() === searchTrimmed.toLowerCase()) &&
+    !selectedLocations.some(loc => loc.toLowerCase() === searchTrimmed.toLowerCase())
+
+  function handleAddFreeText() {
+    if (!searchTrimmed) return
+    onLocationsChange([...selectedLocations, searchTrimmed])
+    setLocationSearch('')
+  }
+
+  function handleLocationKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filteredSuggestions.length === 1) {
+        toggleLocation(filteredSuggestions[0])
+        setLocationSearch('')
+      } else if (isNewCity) {
+        handleAddFreeText()
+      }
     }
   }
 
@@ -71,8 +113,8 @@ export function FilterBar({
 
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Location multi-select — triggers an API search per selected location */}
-        <Popover>
+        {/* Location combobox — free text + suggestions from results pool */}
+        <Popover open={open} onOpenChange={handleOpenChange}>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 text-xs font-normal">
               {t('filter.location')}
@@ -84,21 +126,61 @@ export function FilterBar({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-64 p-3" align="start">
-            {availableLocations.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t('filter.noLocations')}</p>
-            ) : (
-              <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
-                {availableLocations.map(loc => (
+            <div className="flex flex-col gap-2">
+              {/* Free-text input */}
+              <Input
+                placeholder={t('filter.typeCity')}
+                value={locationSearch}
+                onChange={e => setLocationSearch(e.target.value)}
+                onKeyDown={handleLocationKeyDown}
+                className="h-8 text-sm"
+                autoFocus
+              />
+
+              <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
+                {/* Already selected cities — always visible at the top */}
+                {selectedLocations.map(loc => (
                   <label key={loc} className="flex items-center gap-2 text-sm cursor-pointer">
                     <Checkbox
-                      checked={selectedLocations.includes(loc)}
+                      checked={true}
+                      onCheckedChange={() => toggleLocation(loc)}
+                    />
+                    <span className="truncate flex-1">{loc}</span>
+                  </label>
+                ))}
+
+                {/* Divider between selected and suggestions */}
+                {selectedLocations.length > 0 && filteredSuggestions.length > 0 && (
+                  <div className="border-t border-border my-1" />
+                )}
+
+                {/* Filtered suggestions from the pool */}
+                {filteredSuggestions.map(loc => (
+                  <label key={loc} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={false}
                       onCheckedChange={() => toggleLocation(loc)}
                     />
                     <span className="truncate">{loc}</span>
                   </label>
                 ))}
+
+                {/* Free-text add option when the typed city is not in the pool */}
+                {isNewCity && (
+                  <button
+                    className="text-left text-sm text-primary hover:underline px-1 py-0.5 mt-1"
+                    onClick={handleAddFreeText}
+                  >
+                    + {t('filter.addCity', { city: searchTrimmed })}
+                  </button>
+                )}
+
+                {/* Empty state: nothing selected, no suggestions, no free text */}
+                {!isNewCity && filteredSuggestions.length === 0 && selectedLocations.length === 0 && (
+                  <p className="text-xs text-muted-foreground py-1">{t('filter.typeCity')}</p>
+                )}
               </div>
-            )}
+            </div>
           </PopoverContent>
         </Popover>
 
