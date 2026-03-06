@@ -115,10 +115,41 @@ export function HistoryPage() {
 
   useEffect(() => {
     listHistoryEntries(historyRepository)
-      .then(setEntries)
+      .then(async loadedEntries => {
+        setEntries(loadedEntries)
+
+        // Auto-repair: if an entry shows 'saved' but a TailoredCv exists in the
+        // repo, the status update after generation must have failed silently.
+        // Correct it now so the UI reflects the real state.
+        const savedEntries = loadedEntries.filter(e => e.status === 'saved')
+        if (savedEntries.length === 0) return
+
+        const repairResults = await Promise.allSettled(
+          savedEntries.map(e => tailoredCvRepository.findByJobPostingId(e.jobId)),
+        )
+
+        const repaired: string[] = []
+        repairResults.forEach((result, i) => {
+          if (result.status === 'fulfilled' && result.value.length > 0) {
+            repaired.push(savedEntries[i].jobId)
+          }
+        })
+
+        if (repaired.length === 0) return
+
+        // Update BD and local state for repaired entries
+        await Promise.allSettled(
+          repaired.map(jobId => updateHistoryStatus(historyRepository, jobId, 'generated')),
+        )
+        setEntries(prev =>
+          prev.map(e =>
+            repaired.includes(e.jobId) ? { ...e, status: 'generated' as const } : e,
+          ),
+        )
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [historyRepository])
+  }, [historyRepository, tailoredCvRepository])
 
   // Regiones únicas derivadas de las entradas cargadas
   const availableRegions = useMemo(() => {

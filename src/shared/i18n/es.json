@@ -3,7 +3,14 @@
     "search": "Buscar",
     "cv": "CV Base",
     "history": "Historial",
-    "settings": "Ajustes"
+    "settings": "Ajustes",
+    "toggleMenu": "Abrir/cerrar menú"
+  },
+  "jobEditor": {
+    "loading": "Cargando…",
+    "backToJobs": "Volver a empleos",
+    "notFound": "Oferta de empleo no encontrada",
+    "saveFailed": "Error al guardar la oferta"
   },
   "theme": {
     "switchToLight": "Cambiar a modo claro",
@@ -14,6 +21,7 @@
   "auth": {
     "signIn": "Inicia sesión en tu cuenta",
     "createAccount": "Crea tu cuenta",
+    "emailPlaceholder": "tu@email.com",
     "accountCreated": "¡Cuenta creada!",
     "canSignIn": "Ya puedes iniciar sesión con tu nueva cuenta.",
     "signInButton": "Iniciar sesión",
@@ -55,8 +63,6 @@
     "allModes": "Todas",
     "remoteOnly": "Solo remoto",
     "clear": "Limpiar",
-    "company": "Empresa",
-    "companyPlaceholder": "Filtrar por empresa...",
     "workMode": {
       "Remote": "Remoto",
       "Hybrid": "Híbrido",
@@ -142,10 +148,12 @@
       "upload": "Subir"
     },
     "saving": "Guardando…",
+    "autoSaved": "Autoguardado ✓",
     "exporting": "Exportando…",
     "saved": "Guardado ✓",
     "done": "Listo ✓",
     "newCv": "Nuevo CV",
+    "defaultName": "Mi CV",
     "backLabel": "Volver a CVs",
     "sections": {
       "personalInfo": "Información personal",
@@ -201,7 +209,9 @@
       "pastePlaceholder": "Pega aquí el texto completo de tu CV…",
       "parse": "Parsear e importar",
       "parsing": "Analizando con IA…",
-      "hint": "Ollama analizará tu CV y rellenará el Editor. Revisa y ajusta antes de guardar.",
+      "hint": "La IA analizará tu CV y rellenará el Editor. Revisa y ajusta antes de guardar.",
+      "parseError": "Error al analizar el CV. Comprueba que el proxy está corriendo.",
+      "parseSuccess": "CV importado correctamente — revisa los campos en el editor",
       "pasteFirst": "Pega o sube el texto de tu CV antes de parsear."
     },
     "preview": {
@@ -266,5 +276,15 @@
       "copyCmd": "Copiar comando"
     }
   },
-  "logout": "Cerrar sesión"
+  "logout": "Cerrar sesión",
+  "error": {
+    "title": "Algo ha ido mal",
+    "description": "Ha ocurrido un error inesperado. Puedes intentar volver al inicio.",
+    "goHome": "Volver al inicio"
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "description": "La URL que has introducido no existe. Comprueba que es correcta o vuelve al inicio.",
+    "goHome": "Ir al inicio"
+  }
 }

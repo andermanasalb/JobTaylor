@@ -3,7 +3,14 @@
     "search": "Search",
     "cv": "CV Base",
     "history": "History",
-    "settings": "Settings"
+    "settings": "Settings",
+    "toggleMenu": "Toggle navigation menu"
+  },
+  "jobEditor": {
+    "loading": "Loading…",
+    "backToJobs": "Back to Jobs",
+    "notFound": "Job posting not found",
+    "saveFailed": "Failed to save posting"
   },
   "theme": {
     "switchToLight": "Switch to light mode",
@@ -14,6 +21,7 @@
   "auth": {
     "signIn": "Sign in to your account",
     "createAccount": "Create your account",
+    "emailPlaceholder": "you@email.com",
     "accountCreated": "Account created!",
     "canSignIn": "You can now sign in with your new account.",
     "signInButton": "Sign in",
@@ -55,8 +63,6 @@
     "allModes": "All",
     "remoteOnly": "Remote only",
     "clear": "Clear",
-    "company": "Company",
-    "companyPlaceholder": "Filter by company...",
     "workMode": {
       "Remote": "Remote",
       "Hybrid": "Hybrid",
@@ -142,10 +148,12 @@
       "upload": "Upload"
     },
     "saving": "Saving…",
+    "autoSaved": "Auto-saved ✓",
     "exporting": "Exporting…",
     "saved": "Saved ✓",
     "done": "Done ✓",
     "newCv": "New CV",
+    "defaultName": "My CV",
     "backLabel": "Back to CVs",
     "sections": {
       "personalInfo": "Personal Info",
@@ -201,7 +209,9 @@
       "pastePlaceholder": "Paste the full text of your CV here…",
       "parse": "Parse and import",
       "parsing": "Analysing with AI…",
-      "hint": "Ollama will analyse your CV and fill in the Editor. Review and adjust before saving.",
+      "hint": "AI will analyse your CV and fill in the Editor. Review and adjust before saving.",
+      "parseError": "Error parsing the CV. Make sure the proxy is running.",
+      "parseSuccess": "CV imported successfully — review the fields in the editor",
       "pasteFirst": "Paste or upload your CV text before parsing."
     },
     "preview": {
@@ -266,5 +276,15 @@
       "copyCmd": "Copy command"
     }
   },
-  "logout": "Sign out"
+  "logout": "Sign out",
+  "error": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. You can try going back to the home page.",
+    "goHome": "Go to home"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The URL you entered does not exist. Check that it is correct or go back to home.",
+    "goHome": "Go to home"
+  }
 }

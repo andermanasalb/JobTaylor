@@ -8,7 +8,6 @@ import type { SearchListing } from '../../ui/types/SearchListing'
 export interface JobSearchCriteria {
   keywords?: string
   location?: string
-  company?: string   // optional company/employer name filter
   remote?: boolean
   country?: string      // ISO country code, e.g. 'es'. Defaults to 'es'.
   resultsPerPage?: number

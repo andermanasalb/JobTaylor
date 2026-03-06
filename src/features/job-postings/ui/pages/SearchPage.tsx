@@ -28,6 +28,7 @@ import { removeHistoryEntry } from '@/features/history/application/usecases/Remo
 import { updateHistoryStatus } from '@/features/history/application/usecases/UpdateHistoryStatus'
 import { createHistoryEntry } from '@/features/history/domain/HistoryEntry'
 import type { HistoryStatus } from '@/features/history/domain/HistoryEntry'
+import type { TailoredCv } from '@/features/tailoring/domain/TailoredCv'
 import { listBaseCvs } from '@/features/cv-base/application/usecases/ListBaseCvs'
 import { exportTailoredCv } from '@/infra/export/exportTailoredCv'
 import { useSettings } from '@/features/settings/ui/hooks/useSettings'
@@ -42,6 +43,7 @@ const MAX_PAGES = 10 // máximo de páginas a cargar (200 ofertas)
 
 export function SearchPage() {
   const { historyRepository, cvRepository, aiClient, tailoredCvRepository, jobFeedPort } = useAppDeps()
+
   const settings = useSettings()
   const photo = usePhoto()
   const location = useLocation()
@@ -54,7 +56,6 @@ export function SearchPage() {
 
   // ── Estado persistido en sessionStorage (sobrevive navegación entre páginas) ──
   const [query, setQuery] = useState<string>(() => sessionStorage.getItem('search.query') ?? '')
-  const [company, setCompany] = useState<string>(() => sessionStorage.getItem('search.company') ?? '')
   const [selectedLocations, setSelectedLocations] = useState<string[]>(() => {
     try { return JSON.parse(sessionStorage.getItem('search.locations') ?? '[]') } catch { return [] }
   })
@@ -103,6 +104,8 @@ export function SearchPage() {
   // Estado del historial y exportación
   const [historyStatuses, setHistoryStatuses] = useState<Map<string, HistoryStatus>>(new Map())
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
+  // TailoredCvs cargados desde BD al montar (permite mostrar botones Exportar/Regenerar entre sesiones)
+  const [persistedTailoredCvs, setPersistedTailoredCvs] = useState<Map<string, TailoredCv>>(new Map())
 
   // Scores calculados por el scoring AI (por jobId) — persistidos en sessionStorage
   const [jobScores, setJobScores] = useState<Map<string, number>>(() => {
@@ -150,7 +153,6 @@ export function SearchPage() {
 
   // Persistir todo el estado de búsqueda en sessionStorage
   useEffect(() => { sessionStorage.setItem('search.query', query) }, [query])
-  useEffect(() => { sessionStorage.setItem('search.company', company) }, [company])
   useEffect(() => { sessionStorage.setItem('search.locations', JSON.stringify(selectedLocations)) }, [selectedLocations])
   useEffect(() => { sessionStorage.setItem('search.workMode', workMode) }, [workMode])
   useEffect(() => { sessionStorage.setItem('search.remoteOnly', String(remoteOnly)) }, [remoteOnly])
@@ -172,19 +174,16 @@ export function SearchPage() {
   }, [enrichedJobs])
 
   // Core fetch — page=1 replaces list, page>1 appends
-  const fetchListings = useCallback(async (keywords?: string, page = 1, companyFilter?: string) => {
+  const fetchListings = useCallback(async (keywords?: string, page = 1) => {
     if (page === 1) {
       setIsLoading(true)
       setFeedError(null)
-      // Do NOT reset jobScores here — they are persisted in sessionStorage and
-      // must survive new searches so previously scored jobs keep their badges.
     } else {
       setIsLoadingMore(true)
     }
     try {
       const results = await jobFeedPort.search({
         keywords: keywords?.trim() || undefined,
-        company: companyFilter?.trim() || undefined,
         page,
       })
       if (page === 1) {
@@ -214,18 +213,7 @@ export function SearchPage() {
     setVisibleCount(PAGE_SIZE)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      fetchListings(value, 1, company)
-    }, DEBOUNCE_MS)
-  }
-
-  function handleCompanyChange(value: string) {
-    setCompany(value)
-    setCurrentPage(1)
-    setApiHasMore(true)
-    setVisibleCount(PAGE_SIZE)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      fetchListings(query, 1, value)
+      fetchListings(value, 1)
     }, DEBOUNCE_MS)
   }
 
@@ -234,7 +222,7 @@ export function SearchPage() {
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
-    fetchListings(query, 1, company)
+    fetchListings(query, 1)
   }
 
   // Init
@@ -248,8 +236,7 @@ export function SearchPage() {
     // Restaurar búsqueda guardada — si ya hay resultados en caché los mostramos
     // y relanzamos la búsqueda en background para refrescar
     const savedQuery = sessionStorage.getItem('search.query') ?? ''
-    const savedCompany = sessionStorage.getItem('search.company') ?? ''
-    fetchListings(savedQuery || undefined, 1, savedCompany || undefined)
+    fetchListings(savedQuery || undefined, 1)
 
     listHistoryEntries(historyRepository)
       .then(entries => {
@@ -258,6 +245,25 @@ export function SearchPage() {
         const statusMap = new Map<string, HistoryStatus>()
         for (const e of entries) statusMap.set(e.jobId, e.status)
         setHistoryStatuses(statusMap)
+
+        // Para jobs ya generados o exportados, cargar el TailoredCv persistido
+        // para que los botones Exportar/Regenerar funcionen entre sesiones.
+        const generatedEntries = entries.filter(
+          e => e.status === 'generated' || e.status === 'exported',
+        )
+        if (generatedEntries.length > 0) {
+          Promise.allSettled(
+            generatedEntries.map(e => tailoredCvRepository.findByJobPostingId(e.jobId)),
+          ).then(results => {
+            const cvMap = new Map<string, TailoredCv>()
+            results.forEach((result, i) => {
+              if (result.status === 'fulfilled' && result.value.length > 0) {
+                cvMap.set(generatedEntries[i].jobId, result.value[0])
+              }
+            })
+            if (cvMap.size > 0) setPersistedTailoredCvs(cvMap)
+          }).catch(() => { /* non-critical */ })
+        }
       })
       .catch(console.error)
 
@@ -285,10 +291,8 @@ export function SearchPage() {
     // Si no está, guardamos el jobId y limpiamos la búsqueda para recargar todos los resultados
     pendingJobIdRef.current = jobId
     setQuery('')
-    setCompany('')
     sessionStorage.setItem('search.query', '')
-    sessionStorage.setItem('search.company', '')
-    fetchListings(undefined, 1, undefined)
+    fetchListings(undefined, 1)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
@@ -362,13 +366,13 @@ export function SearchPage() {
       if (visibleCount < filteredJobs.length) {
         setVisibleCount(prev => prev + PAGE_SIZE)
       } else if (apiHasMore) {
-        fetchListings(query, currentPage + 1, company)
+        fetchListings(query, currentPage + 1)
       }
     }
 
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
-  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, company, fetchListings])
+  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
 
   // Seleccionar job: lanza enrichment y scoring on-demand con caché
   async function handleSelectJob(job: SearchListing) {
@@ -386,10 +390,8 @@ export function SearchPage() {
 
     if (job.url && !alreadyEnriched && !enrichmentInProgress) {
       setEnrichingJobId(job.id)
-      console.log(`[enrichment] Starting enrichment for job ${job.id} url=${job.url}`)
       enrichmentPromise = jobEnrichmentPort.enrich(job.url, settings.outputLanguage)
         .then(enriched => {
-          console.log(`[enrichment] Success for job ${job.id}`, enriched)
           setEnrichedJobs(prev => new Map(prev).set(job.id, enriched))
           return enriched
         })
@@ -413,11 +415,9 @@ export function SearchPage() {
           // Preferimos la descripción enriquecida; fallback a Adzuna description
           const jobDescription = enriched?.description ?? job.description ?? ''
           if (!jobDescription) throw new Error('No job description available for scoring')
-          console.log(`[scoring] Starting for job ${job.id}`)
           return scoreAdapter.score(cvPreview, jobDescription)
         })
         .then(result => {
-          console.log(`[scoring] Score for job ${job.id}: ${result.score}`)
           setJobScores(prev => new Map(prev).set(job.id, result.score))
         })
         .catch(err => console.error('[scoring] Failed for', job.id, err))
@@ -469,7 +469,7 @@ export function SearchPage() {
 
   async function handleExport(job: SearchListing) {
     const queueEntry = generationQueue.jobs.get(job.id)
-    const tailored = queueEntry?.tailoredCv
+    const tailored = queueEntry?.tailoredCv ?? persistedTailoredCvs.get(job.id) ?? null
     if (!tailored || exportingJobId) return
     setExportingJobId(job.id)
     try {
@@ -498,20 +498,26 @@ export function SearchPage() {
           return next
         })
         setSavedJobs(prev => new Set(prev).add(jobId))
+        // Mantener el CV generado en el mapa persistido para que exporte correctamente
+        if (entry.tailoredCv) {
+          setPersistedTailoredCvs(prev => {
+            if (prev.get(jobId) === entry.tailoredCv) return prev
+            return new Map(prev).set(jobId, entry.tailoredCv!)
+          })
+        }
       }
     })
   }, [generationQueue.jobs])
 
   function clearFilters() {
     setQuery('')
-    setCompany('')
     setSelectedLocations([])
     setWorkMode('all')
     setRemoteOnly(false)
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
-    fetchListings(undefined, 1, undefined)
+    fetchListings(undefined, 1)
   }
 
   return (
@@ -522,8 +528,6 @@ export function SearchPage() {
           <FilterBar
             query={query}
             onQueryChange={handleQueryChange}
-            company={company}
-            onCompanyChange={handleCompanyChange}
             availableLocations={availableLocations}
             selectedLocations={selectedLocations}
             onLocationsChange={setSelectedLocations}
@@ -613,7 +617,7 @@ export function SearchPage() {
           job={selectedJob}
           isSaved={selectedJob ? savedJobs.has(selectedJob.id) : false}
           historyStatus={selectedJob ? (historyStatuses.get(selectedJob.id) ?? null) : null}
-          tailoredCv={selectedJob ? (generationQueue.jobs.get(selectedJob.id)?.tailoredCv ?? null) : null}
+          tailoredCv={selectedJob ? (generationQueue.jobs.get(selectedJob.id)?.tailoredCv ?? persistedTailoredCvs.get(selectedJob.id) ?? null) : null}
           generationStatus={selectedJob ? (generationQueue.jobs.get(selectedJob.id)?.status ?? null) : null}
           isExporting={selectedJob?.id === exportingJobId}
           isScoring={selectedJob?.id === scoringJobId}
@@ -652,7 +656,7 @@ export function SearchPage() {
                 job={selectedJob}
                 isSaved={savedJobs.has(selectedJob.id)}
                 historyStatus={historyStatuses.get(selectedJob.id) ?? null}
-                tailoredCv={generationQueue.jobs.get(selectedJob.id)?.tailoredCv ?? null}
+                tailoredCv={generationQueue.jobs.get(selectedJob.id)?.tailoredCv ?? persistedTailoredCvs.get(selectedJob.id) ?? null}
                 generationStatus={generationQueue.jobs.get(selectedJob.id)?.status ?? null}
                 isExporting={selectedJob.id === exportingJobId}
                 isScoring={selectedJob.id === scoringJobId}

@@ -5,10 +5,10 @@ import { JobPostingEditorPage } from '@/features/job-postings/ui/pages/JobPostin
 import { CvBasePage } from '@/features/cv-base/ui/pages/CvBasePage'
 import { HistoryPage } from '@/features/history/ui/pages/HistoryPage'
 import { SettingsPage } from '@/features/settings/ui/pages/SettingsPage'
-import { TailorPage } from '@/features/tailoring/ui/pages/TailorPage'
 import { LoginPage } from '@/features/auth/ui/pages/LoginPage'
 import { ProtectedRoute } from '@/features/auth/ui/components/ProtectedRoute'
 import { AuthProvider } from '@/features/auth/ui/context/AuthContext'
+import { NotFoundPage } from '@/shared/components/NotFoundPage'
 
 /** Root layout: provides AuthContext to all routes (public + private). */
 function AuthRoot() {
@@ -37,16 +37,16 @@ export const router = createBrowserRouter([
         children: [
           {
             element: <AppShell />,
-            children: [
-              { index: true, element: <Navigate to="/search" replace /> },
-              { path: 'search', element: <SearchPage /> },
-              { path: 'jobs/new', element: <JobPostingEditorPage /> },
-              { path: 'jobs/:id', element: <JobPostingEditorPage /> },
-              { path: 'cv', element: <CvBasePage /> },
-              { path: 'history', element: <HistoryPage /> },
-              { path: 'settings', element: <SettingsPage /> },
-              { path: 'tailor/:jobId', element: <TailorPage /> },
-            ],
+        children: [
+          { index: true, element: <Navigate to="/search" replace /> },
+          { path: 'search', element: <SearchPage /> },
+          { path: 'jobs/new', element: <JobPostingEditorPage /> },
+          { path: 'jobs/:id', element: <JobPostingEditorPage /> },
+          { path: 'cv', element: <CvBasePage /> },
+          { path: 'history', element: <HistoryPage /> },
+          { path: 'settings', element: <SettingsPage /> },
+          { path: '*', element: <NotFoundPage /> },
+        ],
           },
         ],
       },

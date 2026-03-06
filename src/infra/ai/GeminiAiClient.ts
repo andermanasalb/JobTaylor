@@ -1,27 +1,23 @@
-import type { AiClient, AiTailorResult } from '../../features/tailoring/application/ports/AiClient'
+import type { AiClient, AiTailorOptions, AiTailorResult } from '../../features/tailoring/application/ports/AiClient'
 import type { BaseCv } from '../../features/cv-base/domain/BaseCv'
 import type { JobPosting } from '../../features/job-postings/domain/JobPosting'
 
 const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
 
 /**
- * Llama al proxy local /tailor con provider='gemini' para generar un CV
- * adaptado usando la API de Gemini.
- * Respeta los guardrails: nunca inventa experiencia, empresas ni fechas.
- * El nivel de creatividad se controla con el parámetro strictness (0-100).
+ * Production AiClient implementation.
+ * Stateless — all per-request context (strictness, enrichedDescription, language)
+ * is passed via AiTailorOptions so a single instance can be registered in the DI
+ * container and reused across multiple tailoring calls.
+ *
+ * Calls the proxy /tailor endpoint backed by Gemini.
+ * Respects guardrails: never invents experience, employers, titles, dates,
+ * degrees or certifications.
  */
 export class GeminiAiClient implements AiClient {
-  strictness: number
-  enrichedDescription: string | undefined
-  language: string
+  async tailorCv(baseCv: BaseCv, jobPosting: JobPosting, options: AiTailorOptions = {}): Promise<AiTailorResult> {
+    const { strictness = 70, enrichedDescription, language = 'ES' } = options
 
-  constructor(strictness = 70, enrichedDescription?: string, language = 'ES') {
-    this.strictness = strictness
-    this.enrichedDescription = enrichedDescription
-    this.language = language
-  }
-
-  async tailorCv(baseCv: BaseCv, jobPosting: JobPosting): Promise<AiTailorResult> {
     const res = await fetch(`${PROXY_URL}/tailor`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -29,10 +25,9 @@ export class GeminiAiClient implements AiClient {
         cv: baseCv,
         jobTitle: jobPosting.title,
         jobDescription: jobPosting.description,
-        enrichedDescription: this.enrichedDescription,
-        strictness: this.strictness,
-        language: this.language,
-        provider: 'gemini',
+        enrichedDescription,
+        strictness,
+        language,
       }),
     })
 
@@ -43,8 +38,8 @@ export class GeminiAiClient implements AiClient {
 
     const data = await res.json()
 
-    // Defensive merge: for each field we prefer the AI result when non-empty/non-null;
-    // otherwise we fall back to the original baseCv to avoid data loss.
+    // Defensive merge: prefer AI result when non-empty/non-null;
+    // fall back to original baseCv to avoid data loss.
     const ai = data.tailoredCv ?? {}
 
     function mergeArray<T>(aiArr: unknown, baseArr: T[]): T[] {

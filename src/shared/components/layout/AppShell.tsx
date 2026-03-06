@@ -121,7 +121,7 @@ export function AppShell() {
               variant="ghost"
               size="icon"
               onClick={() => setMobileOpen(!mobileOpen)}
-              aria-label="Toggle navigation"
+              aria-label={t('nav.toggleMenu')}
               className="h-8 w-8"
             >
               {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}

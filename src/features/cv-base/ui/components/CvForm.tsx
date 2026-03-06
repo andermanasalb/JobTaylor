@@ -15,6 +15,8 @@ import {
   Download,
   Upload,
   X,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react'
 import type { BaseCv, Skill } from '../../domain/BaseCv'
 import type { CreateBaseCvInput } from '../../domain/BaseCv'
@@ -264,7 +266,7 @@ interface CvFormProps {
   onSave: (input: CreateBaseCvInput) => Promise<void>
   onAutoSave?: (input: CreateBaseCvInput) => void
   saving?: boolean
-  saveStatus?: 'idle' | 'saved'
+  saveStatus?: 'idle' | 'saved' | 'autosaved'
   onBack?: () => void
   submitLabel?: string
 }
@@ -311,6 +313,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
   const [dragOver, setDragOver] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
+  const [parseSuccess, setParseSuccess] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Generic field setter
@@ -425,51 +428,48 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
         const errData = await response.json().catch(() => ({}))
         throw new Error((errData as { error?: string }).error ?? `Error ${response.status}`)
       }
-      const parsed = await response.json() as {
-        fullName?: string
-        email?: string
-        phone?: string | null
-        location?: string | null
-        title?: string | null
-        summary?: string | null
-        experience?: { title?: string; company?: string; location?: string | null; startDate?: string; endDate?: string | null; description?: string[]; technologies?: string[] }[]
-        education?: { degree?: string; institution?: string; location?: string | null; startDate?: string | null; endDate?: string | null; description?: string | null }[]
-        skills?: { name?: string; level?: string | null; category?: string | null }[]
-        languages?: { name?: string; level?: string }[]
-        links?: { label?: string; url?: string }[]
+
+      // The proxy now returns a schema that matches FormState exactly:
+      // all fields are strings (not arrays), dates are YYYY-MM strings,
+      // description is newline-separated, technologies is comma-separated.
+      const p = await response.json() as {
+        fullName: string
+        email: string
+        phone: string
+        location: string
+        title: string
+        summary: string
+        experience: { title: string; company: string; location: string; startDate: string; endDate: string; description: string; technologies: string }[]
+        education: { degree: string; institution: string; location: string; startDate: string; endDate: string; description: string }[]
+        skills: { name: string; level: string; category: string }[]
+        languages: { name: string; level: string }[]
+        links: { label: string; url: string }[]
       }
 
-      // Normaliza un valor: si es null/undefined/vacío devuelve ''
-      const s = (val: string | null | undefined) =>
-        (val != null && val.trim() !== '') ? val.trim() : ''
+      const s = (v: string | null | undefined) => (v ?? '').trim()
 
-      // Reemplaza el formulario completo con lo parseado (vacía lo anterior)
       setForm({
-        name: '',   // el usuario lo pondrá al guardar
-        fullName: s(parsed.fullName),
-        email: s(parsed.email),
-        phone: s(parsed.phone),
-        location: s(parsed.location),
-        title: s(parsed.title),
-        summary: s(parsed.summary),
-        experience: Array.isArray(parsed.experience)
-          ? parsed.experience.map(e => ({
+        name: '',
+        fullName: s(p.fullName),
+        email: s(p.email),
+        phone: s(p.phone),
+        location: s(p.location),
+        title: s(p.title),
+        summary: s(p.summary),
+        experience: Array.isArray(p.experience)
+          ? p.experience.map(e => ({
               id: uid(),
               title: s(e.title),
               company: s(e.company),
               location: s(e.location),
               startDate: s(e.startDate),
               endDate: s(e.endDate),
-              description: Array.isArray(e.description)
-                ? e.description.join('\n')
-                : s(e.description as unknown as string),
-              technologies: Array.isArray(e.technologies)
-                ? e.technologies.join(', ')
-                : s(e.technologies as unknown as string),
+              description: s(e.description),
+              technologies: s(e.technologies),
             }))
           : [],
-        education: Array.isArray(parsed.education)
-          ? parsed.education.map(e => ({
+        education: Array.isArray(p.education)
+          ? p.education.map(e => ({
               id: uid(),
               degree: s(e.degree),
               institution: s(e.institution),
@@ -479,24 +479,23 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               description: s(e.description),
             }))
           : [],
-        skills: Array.isArray(parsed.skills)
-          ? parsed.skills
-              .filter(sk => sk.name && sk.name.trim())
-              .map(sk => ({ id: uid(), name: s(sk.name), level: s(sk.level), category: s(sk.category) }))
+        skills: Array.isArray(p.skills)
+          ? p.skills.filter(sk => s(sk.name)).map(sk => ({ id: uid(), name: s(sk.name), level: s(sk.level), category: s(sk.category) }))
           : [],
-        languages: Array.isArray(parsed.languages)
-          ? parsed.languages
-              .filter(l => l.name && l.name.trim())
-              .map(l => ({ id: uid(), name: s(l.name), level: s(l.level) }))
+        languages: Array.isArray(p.languages)
+          ? p.languages.filter(l => s(l.name)).map(l => ({ id: uid(), name: s(l.name), level: s(l.level) }))
           : [],
-        links: Array.isArray(parsed.links)
-          ? parsed.links
-              .filter(l => l.url && l.url.trim())
-              .map(l => ({ id: uid(), label: s(l.label), url: s(l.url) }))
+        links: Array.isArray(p.links)
+          ? p.links.filter(l => s(l.url)).map(l => ({ id: uid(), label: s(l.label), url: s(l.url) }))
           : [],
       })
+
+      // Switch to editor tab and show success briefly
+      setActiveTab('editor')
+      setParseSuccess(true)
+      setTimeout(() => setParseSuccess(false), 3000)
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : 'Error al parsear el CV. ¿Está el proxy corriendo en localhost:3001?')
+      setParseError(err instanceof Error ? err.message : t('cv.upload.parseError'))
     } finally {
       setParsing(false)
     }
@@ -535,6 +534,9 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <p className="text-base font-semibold truncate">{form.fullName || form.name || <span className="text-muted-foreground font-normal">{t('cv.newCv')}</span>}</p>
               {form.title && (
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{form.title}</p>
+              )}
+              {saveStatus === 'autosaved' && (
+                <p className="text-xs text-muted-foreground mt-0.5">{t('cv.autoSaved')}</p>
               )}
             </div>
           </div>
@@ -965,13 +967,27 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
               <p className="text-xs text-destructive">{parseError}</p>
             )}
 
+            {parseSuccess && (
+              <p className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {t('cv.upload.parseSuccess')}
+              </p>
+            )}
+
             <Button
               type="button"
               className="w-full"
               disabled={parsing || !uploadText.trim()}
               onClick={handleParse}
             >
-              {parsing ? t('cv.upload.parsing') : t('cv.upload.parse')}
+              {parsing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('cv.upload.parsing')}
+                </>
+              ) : (
+                t('cv.upload.parse')
+              )}
             </Button>
 
             <p className="text-xs text-muted-foreground text-center">

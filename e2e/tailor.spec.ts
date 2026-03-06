@@ -4,14 +4,12 @@ import { clearAppStorage } from './fixtures'
 /**
  * Tailoring flow tests.
  *
- * The TailorPage (/tailor/:jobId) requires the job to exist in the
- * jobPostingRepository (in-memory). The SearchPage's inline generate flow
- * generates CVs without navigating to TailorPage.
+ * The SearchPage's inline generate flow generates CVs in a detail panel
+ * without navigating away from the search page.
  *
  * Tests cover:
  * 1. Inline generate flow (SearchPage → Generate CV)
- * 2. TailorPage error state (invalid jobId → "Job not found")
- * 3. Creating a job via editor → saved → navigate to /search
+ * 2. Creating a job via editor → saved → navigate to /search
  */
 
 async function clearLocalStorage(page: import('@playwright/test').Page) {
@@ -78,28 +76,6 @@ test.describe('Inline tailoring (SearchPage)', () => {
     await page.goto('/history')
     await expect(page.getByText('Senior Software Engineer').first()).toBeVisible()
     await expect(page.getByText('Generated').first()).toBeVisible()
-  })
-})
-
-test.describe('TailorPage', () => {
-  test('shows "Job not found" for a nonexistent jobId', async ({ page }) => {
-    await page.goto('/tailor/nonexistent-id-12345')
-    // The TailorPage fetches async — wait for the error state to render
-    // The error UI renders an h3 with "Job not found"
-    await expect(page.locator('h3').filter({ hasText: 'Job not found' })).toBeVisible({ timeout: 8000 })
-    await expect(page.getByRole('button', { name: 'Back to Jobs' })).toBeVisible()
-  })
-
-  test('"Back to Jobs" navigates to /search', async ({ page }) => {
-    await page.goto('/tailor/nonexistent-id-12345')
-    await expect(page.locator('h3').filter({ hasText: 'Job not found' })).toBeVisible({ timeout: 8000 })
-    await page.getByRole('button', { name: 'Back to Jobs' }).click()
-    await expect(page).toHaveURL(/\/search/)
-  })
-
-  test('guardrail banner is visible', async ({ page }) => {
-    await page.goto('/tailor/some-id-12345')
-    await expect(page.getByText(/Guardrail:/)).toBeVisible()
   })
 
   test('create job via editor navigates to /search on save', async ({ page }) => {

@@ -21,7 +21,7 @@ export function CvBasePage() {
   // undefined = still loading, null = loaded but no CV exists yet
   const [cv, setCv] = useState<BaseCv | null | undefined>(undefined)
   const [saving, setSaving] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'autosaved'>('idle')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
@@ -33,7 +33,7 @@ export function CvBasePage() {
     // No CV yet — auto-create one pre-filled with the user's registration data
     if (session?.user) {
       const initial = await saveBaseCv(cvRepository, {
-        name: 'Mi CV',
+        name: t('cv.defaultName'),
         personalInfo: {
           fullName: session.user.name ?? '',
           email: session.user.email,
@@ -43,7 +43,7 @@ export function CvBasePage() {
     } else {
       setCv(null)
     }
-  }, [cvRepository, session])
+  }, [cvRepository, session, t])
 
   useEffect(() => {
     load()
@@ -79,8 +79,11 @@ export function CvBasePage() {
       await saveBaseCv(cvRepository, input)
       const cvs = await listBaseCvs(cvRepository)
       setCv(cvs[0] ?? null)
+      setSaveStatus('autosaved')
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
     } catch {
-      // silent — auto-save failures don't interrupt the user
+      // auto-save failures don't interrupt the user — status stays as-is
     }
   }
 

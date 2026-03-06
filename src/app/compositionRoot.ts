@@ -2,11 +2,8 @@ import { LocalStorageCvRepository } from '../infra/memory/LocalStorageCvReposito
 import { InMemoryJobPostingRepository } from '../infra/memory/InMemoryJobPostingRepository'
 import { InMemoryTailoredCvRepository } from '../infra/memory/InMemoryTailoredCvRepository'
 import { LocalStorageHistoryRepository } from '../infra/memory/LocalStorageHistoryRepository'
-import { FakeAiClient } from '../infra/ai/FakeAiClient'
-import { FakeJobFeedAdapter } from '../infra/job-feed/FakeJobFeedAdapter'
-import { FakeEnrichmentAdapter } from '../infra/enrichment/FakeEnrichmentAdapter'
+import { GeminiAiClient } from '../infra/ai/GeminiAiClient'
 import { GeminiEnrichmentAdapter } from '../infra/enrichment/GeminiEnrichmentAdapter'
-import { FakeScoringAdapter } from '../infra/scoring/FakeScoringAdapter'
 import { GeminiScoringAdapter } from '../infra/scoring/GeminiScoringAdapter'
 import type { CvRepository } from '../features/cv-base/application/ports/CvRepository'
 import type { JobPostingRepository } from '../features/job-postings/application/ports/JobPostingRepository'
@@ -56,6 +53,7 @@ async function buildDeps(): Promise<AppDependencies> {
       { SupabaseAuthRepository },
       { SupabaseHistoryRepository },
       { AdzunaJobFeedAdapter },
+      { FakeJobFeedAdapter },
     ] = await Promise.all([
       import('../infra/supabase/SupabaseCvRepository'),
       import('../infra/supabase/SupabaseJobPostingRepository'),
@@ -63,25 +61,46 @@ async function buildDeps(): Promise<AppDependencies> {
       import('../infra/supabase/SupabaseAuthRepository'),
       import('../infra/supabase/SupabaseHistoryRepository'),
       import('../infra/job-feed/AdzunaJobFeedAdapter'),
+      import('../infra/job-feed/FakeJobFeedAdapter'),
     ])
 
     return {
       cvRepository: new SupabaseCvRepository(),
       jobPostingRepository: new SupabaseJobPostingRepository(),
       tailoredCvRepository: new SupabaseTailoredCvRepository(),
-      aiClient: new FakeAiClient(),
+      aiClient: new GeminiAiClient(),
       historyRepository: new SupabaseHistoryRepository(),
       authRepository: new SupabaseAuthRepository(),
       jobFeedPort: adzunaAppId && adzunaAppKey
         ? new AdzunaJobFeedAdapter(adzunaAppId, adzunaAppKey)
-        : new FakeJobFeedAdapter(),
+        : (() => {
+            console.warn(
+              '[JobTaylor] VITE_ADZUNA_APP_ID or VITE_ADZUNA_APP_KEY is not set. ' +
+              'Using FakeJobFeedAdapter — job search will return mock data. ' +
+              'Set both keys in .env.local to enable real job listings.'
+            )
+            return new FakeJobFeedAdapter()
+          })(),
       jobEnrichmentPort: new GeminiEnrichmentAdapter(),
       scoringPort: new GeminiScoringAdapter(),
     }
   }
 
   // Stage 0: no real auth — provide a no-op stub so the type is satisfied
-  const { FakeAuthRepository } = await import('../infra/memory/FakeAuthRepository')
+  const [
+    { FakeAuthRepository },
+    { FakeAiClient },
+    { FakeJobFeedAdapter },
+    { FakeEnrichmentAdapter },
+    { FakeScoringAdapter },
+  ] = await Promise.all([
+    import('../infra/memory/FakeAuthRepository'),
+    import('../infra/ai/FakeAiClient'),
+    import('../infra/job-feed/FakeJobFeedAdapter'),
+    import('../infra/enrichment/FakeEnrichmentAdapter'),
+    import('../infra/scoring/FakeScoringAdapter'),
+  ])
+
   return {
     cvRepository: new LocalStorageCvRepository(),
     jobPostingRepository: new InMemoryJobPostingRepository(),

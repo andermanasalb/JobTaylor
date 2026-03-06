@@ -1,9 +1,10 @@
-import type { AiClient, AiTailorResult } from '../../features/tailoring/application/ports/AiClient'
+import type { AiClient, AiTailorOptions, AiTailorResult } from '../../features/tailoring/application/ports/AiClient'
 import type { BaseCv } from '../../features/cv-base/domain/BaseCv'
 import type { JobPosting } from '../../features/job-postings/domain/JobPosting'
 
 /**
- * Deterministic fake AI client for Stage 0 testing.
+ * Deterministic fake AI client — for unit tests only.
+ * Never used in the production composition root.
  *
  * Rules:
  * - Does NOT invent experience, employers, titles, dates, degrees or certifications.
@@ -12,7 +13,7 @@ import type { JobPosting } from '../../features/job-postings/domain/JobPosting'
  * - All behaviour is deterministic so tests are stable.
  */
 export class FakeAiClient implements AiClient {
-  async tailorCv(baseCv: BaseCv, jobPosting: JobPosting): Promise<AiTailorResult> {
+  async tailorCv(baseCv: BaseCv, jobPosting: JobPosting, _options?: AiTailorOptions): Promise<AiTailorResult> {
     const cvSkillNames = new Set(baseCv.skills.map(s => s.name.toLowerCase()))
 
     const gaps = jobPosting.requirements.skills.filter(

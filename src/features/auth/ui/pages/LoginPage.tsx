@@ -204,15 +204,15 @@ export function LoginPage() {
             <div className="flex flex-col gap-1">
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
+                 <Input
                   type="email"
-                  placeholder="tu@email.com"
+                  placeholder={t('auth.emailPlaceholder')}
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="pl-9"
                   required
                   autoComplete="email"
-                  aria-label="Email"
+                  aria-label={t('auth.email')}
                   disabled={disabled}
                   aria-invalid={email.length > 0 && !emailValid}
                 />

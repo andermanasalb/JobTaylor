@@ -60,17 +60,4 @@ test.describe('Settings page', () => {
     await page.getByRole('button', { name: 'minimal' }).click()
     await expect(page.getByText('CV Template')).toBeVisible()
   })
-
-  test('settings link from tailor guardrail navigates here', async ({ page }) => {
-    // Navigate to a tailor page to trigger the guardrail banner
-    await page.goto('/tailor/some-id-12345')
-    // The guardrail banner should be visible with a Settings link
-    await expect(page.getByText(/Guardrail:/)).toBeVisible()
-    // There are two "Settings" links: one in the sidebar nav and one in the guardrail banner.
-    // Scope to the guardrail link by excluding the sidebar navigation.
-    const guardrailLink = page.locator('a[href="/settings"]').filter({ hasNot: page.getByRole('navigation', { name: 'Main navigation' }) }).first()
-    await guardrailLink.click()
-    await expect(page).toHaveURL(/\/settings/)
-    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
-  })
 })

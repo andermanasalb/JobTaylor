@@ -18,15 +18,17 @@ const PORT = 3001
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview'
+// Allowed CORS origin — defaults to Vite dev server; override via ALLOWED_ORIGIN env var
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173'
 // Límite para Gemini — ventana de contexto de 1M tokens, podemos enviar mucho más
 const MAX_TEXT_CHARS_GEMINI = 50000
 
 const app = express()
 app.use(express.json())
 
-// CORS: permite peticiones desde cualquier origen local (Vite dev o Vercel prod)
+// CORS: permite peticiones solo desde el origen configurado (ALLOWED_ORIGIN env var)
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
@@ -232,7 +234,7 @@ Example of a valid response: 73`
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.1, maxOutputTokens: 32 },
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       }
     )
     if (!geminiRes.ok) {
@@ -629,9 +631,8 @@ function extractHeader(lines) {
 
 // ---------------------------------------------------------------------------
 // POST /parse-cv — body: { text: string }
-// Estrategia: heurística determinista para todos los campos estructurados.
-// Gemini solo para campos narrativos: summary (si no hay sección SUMMARY)
-// y title (si no está en el header).
+// Estrategia: Gemini analiza el CV completo y devuelve JSON estructurado.
+// Fallback heurístico para email y teléfono si Gemini no los detecta.
 // ---------------------------------------------------------------------------
 app.post('/parse-cv', async (req, res) => {
   const { text } = req.body
@@ -639,89 +640,168 @@ app.post('/parse-cv', async (req, res) => {
     return res.status(400).json({ error: 'text es obligatorio y debe tener al menos 20 caracteres' })
   }
 
-  const truncated = text.trim().slice(0, MAX_TEXT_CHARS_GEMINI)
-  const lines = truncated.split(/\r?\n/).map(l => l.trim())
-
-  // ── 1. Extracción heurística completa (determinista, fiable) ──────────────
-  const { fullName, title: hTitle, location } = extractHeader(lines)
-  const email    = extractEmail(truncated)
-  const phone    = extractPhone(truncated)
-  const links    = extractLinks(truncated)
-  const skills   = extractSkills(lines)
-  const languages = extractLanguages(lines)
-  const experience = extractExperience(lines)
-  const education  = extractEducation(lines)
-
-  // Summary: extraemos la sección SUMMARY/PROFILE tal cual si existe
-  const summaryLines = getSectionLines(lines, /^(SUMMARY|PROFILE|ABOUT|OBJECTIVE|RESUMEN|PERFIL|EXTRACTO)$/i)
-  const summaryRaw = summaryLines.join(' ').trim()
-
-  // ── 2. Gemini: solo para campos narrativos que la heurística no cubre bien ──
-  const needSummary = !summaryRaw
-  const needTitle   = !hTitle
-
-  /**
-   * Llama a Gemini con un prompt de texto libre para extraer
-   * un único campo narrativo. Devuelve string o null si falla.
-   */
-  async function geminiExtract(prompt) {
-    if (!GEMINI_API_KEY) return null
-    try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 256 },
-          }),
-          signal: AbortSignal.timeout(30000),
-        }
-      )
-      if (!r.ok) return null
-      const data = await r.json()
-      const result = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim()
-      // Rechaza respuestas vacías o que parezcan JSON (significa que el modelo se confundió)
-      if (!result || result.startsWith('{') || result.startsWith('[')) return null
-      return result
-    } catch {
-      return null
-    }
+  if (!GEMINI_API_KEY) {
+    return res.status(503).json({ error: 'GEMINI_API_KEY no configurada en el proxy' })
   }
 
-  // Preparamos el texto de cabecera del CV para dar contexto al modelo
-  const cvHeader = lines.slice(0, 30).join('\n')
-  const cvFull   = truncated.slice(0, 3000)
+  const truncated = text.trim().slice(0, MAX_TEXT_CHARS_GEMINI)
 
-  // Lanzamos las llamadas en paralelo solo si son necesarias
-  const [aiSummary, aiTitle] = await Promise.all([
-    needSummary
-      ? geminiExtract(
-          `Read this CV and write a professional summary in 2-3 sentences describing the person's background, key skills and experience. Write only the summary text, no labels, no JSON, no bullet points.\n\nCV:\n${cvFull}`
-        )
-      : Promise.resolve(null),
-    needTitle
-      ? geminiExtract(
-          `Read the following CV header and extract the person's professional job title (e.g. "Senior Frontend Developer", "Data Scientist", "Product Manager"). Return ONLY the job title, nothing else.\n\nCV header:\n${cvHeader}`
-        )
-      : Promise.resolve(null),
-  ])
+  // ── Forced response schema — mirrors exactly the FormState used by the CV editor ──
+  // This guarantees Gemini returns the exact field names and types the frontend needs,
+  // with no ambiguity or post-processing required.
+  const CV_EDITOR_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      fullName:  { type: 'STRING', description: 'Full name of the candidate' },
+      email:     { type: 'STRING', description: 'Email address' },
+      phone:     { type: 'STRING', description: 'Phone number including country code if present, or empty string' },
+      location:  { type: 'STRING', description: 'City, country or region, or empty string' },
+      title:     { type: 'STRING', description: 'Current professional title, e.g. "Senior Frontend Developer", or empty string' },
+      summary:   { type: 'STRING', description: 'Professional summary paragraph, or empty string' },
+      experience: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            title:        { type: 'STRING', description: 'Job title' },
+            company:      { type: 'STRING', description: 'Company name' },
+            location:     { type: 'STRING', description: 'City / country, or empty string' },
+            startDate:    { type: 'STRING', description: 'Start date in YYYY-MM format, e.g. "2021-03". If only year given use YYYY-01.' },
+            endDate:      { type: 'STRING', description: 'End date in YYYY-MM format, or empty string if current position' },
+            description:  { type: 'STRING', description: 'Bullet points joined with newline (\\n). Each bullet is one line. No leading dashes or bullets.' },
+            technologies: { type: 'STRING', description: 'Comma-separated list of technologies, e.g. "React, TypeScript, Node.js". Empty string if none.' },
+          },
+          required: ['title', 'company', 'location', 'startDate', 'endDate', 'description', 'technologies'],
+        },
+      },
+      education: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            degree:      { type: 'STRING', description: 'Degree or qualification name, e.g. "Bachelor\'s in Computer Science"' },
+            institution: { type: 'STRING', description: 'University or school name' },
+            location:    { type: 'STRING', description: 'City / country, or empty string' },
+            startDate:   { type: 'STRING', description: 'Start date in YYYY-MM format, or empty string if unknown' },
+            endDate:     { type: 'STRING', description: 'End date in YYYY-MM format, or empty string if ongoing' },
+            description: { type: 'STRING', description: 'Additional notes, honours, GPA, or empty string' },
+          },
+          required: ['degree', 'institution', 'location', 'startDate', 'endDate', 'description'],
+        },
+      },
+      skills: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name:     { type: 'STRING', description: 'Skill name, e.g. "TypeScript"' },
+            level:    { type: 'STRING', description: 'One of: beginner, intermediate, advanced, expert. Empty string if not stated.' },
+            category: { type: 'STRING', description: 'Category, e.g. "Frontend", "DevOps", "Soft Skills". Empty string if not stated.' },
+          },
+          required: ['name', 'level', 'category'],
+        },
+      },
+      languages: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name:  { type: 'STRING', description: 'Language name, e.g. "English"' },
+            level: { type: 'STRING', description: 'Proficiency level, e.g. "Native", "C1", "B2", "Fluent"' },
+          },
+          required: ['name', 'level'],
+        },
+      },
+      links: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            label: { type: 'STRING', description: 'Link label, e.g. "LinkedIn", "GitHub", "Portfolio"' },
+            url:   { type: 'STRING', description: 'Full URL including https://' },
+          },
+          required: ['label', 'url'],
+        },
+      },
+    },
+    required: ['fullName', 'email', 'phone', 'location', 'title', 'summary', 'experience', 'education', 'skills', 'languages', 'links'],
+  }
 
-  // ── 3. Resultado final: heurística + Gemini para los huecos ───────────────
-  res.json({
-    fullName,
-    email,
-    phone,
-    location,
-    title:    hTitle   || aiTitle   || null,
-    summary:  summaryRaw || aiSummary || null,
-    experience,
-    education,
-    skills,
-    languages,
-    links,
-  })
+  const prompt = `You are an expert CV parser. Extract ALL information from the CV text below and populate every field of the structured schema.
+
+CRITICAL RULES:
+- Extract EVERY experience entry, education entry, skill, language and link you find — do not skip any.
+- Dates MUST be in YYYY-MM format. If only a year is given, use YYYY-01. Current/ongoing positions get endDate = "".
+- experience.description: join all bullet points with a newline character (\\n). Do NOT include leading "•", "-" or "*". Each bullet is one plain sentence or phrase.
+- experience.technologies: comma-separated string of all technologies mentioned for that role (e.g. "React, TypeScript, Node.js"). Empty string if none found.
+- skills: list each skill as a separate entry. If skills are listed as a comma-separated line in the CV, split them into individual items.
+- For any field not found in the CV, use an empty string "" (never null).
+- links: detect LinkedIn, GitHub, portfolio, or any URL mentioned and add them with an appropriate label.
+
+CV TEXT:
+${truncated}`
+
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 8192,
+            responseMimeType: 'application/json',
+            responseSchema: CV_EDITOR_SCHEMA,
+          },
+        }),
+        signal: AbortSignal.timeout(60000),
+      }
+    )
+
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '')
+      console.error('[parse-cv] Gemini error', r.status, errBody)
+      return res.status(502).json({ error: `Gemini respondió con error ${r.status}` })
+    }
+
+    const data = await r.json()
+    const rawText = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim()
+
+    if (!rawText) {
+      return res.status(502).json({ error: 'Gemini devolvió una respuesta vacía' })
+    }
+
+    let parsed
+    try {
+      const clean = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+      parsed = JSON.parse(clean)
+    } catch {
+      console.error('[parse-cv] JSON parse failed:', rawText.slice(0, 300))
+      return res.status(502).json({ error: 'La respuesta de Gemini no era JSON válido' })
+    }
+
+    // ── Regex fallback for email/phone if Gemini left them empty ────────────
+    if (!parsed.email) {
+      const emailMatch = truncated.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/)
+      if (emailMatch) parsed.email = emailMatch[0]
+    }
+    if (!parsed.phone) {
+      const phoneMatch = truncated.match(/(\+?\d[\d\s\-().]{6,}\d)/)
+      if (phoneMatch) parsed.phone = phoneMatch[1].trim()
+    }
+
+    console.log('[parse-cv] OK — fields:', Object.keys(parsed).join(', '),
+      '| experience:', parsed.experience?.length ?? 0,
+      '| education:', parsed.education?.length ?? 0,
+      '| skills:', parsed.skills?.length ?? 0)
+
+    res.json(parsed)
+  } catch (err) {
+    console.error('[parse-cv] Error:', err)
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Error interno del proxy' })
+  }
 })
 
 app.listen(PORT, () => {
