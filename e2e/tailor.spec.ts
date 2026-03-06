@@ -23,9 +23,9 @@ async function clearLocalStorage(page: import('@playwright/test').Page) {
  */
 async function createBaseCv(page: import('@playwright/test').Page) {
   await page.goto('/cv')
-  await expect(page.getByPlaceholder('Ana García')).toBeVisible()
-  await page.getByPlaceholder('Ana García').fill('Test User')
-  await page.getByPlaceholder('ana@example.com').fill('test@example.com')
+  await expect(page.getByPlaceholder('Full name')).toBeVisible()
+  await page.getByPlaceholder('Full name').fill('Test User')
+  await page.getByPlaceholder('email@example.com').fill('test@example.com')
   // Wait for the 800ms auto-save debounce to fire, ensuring the CV is persisted
   // before navigating away (the unmount save also fires, but this is belt-and-suspenders)
   await page.waitForTimeout(1000)

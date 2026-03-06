@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { JobPosting, CreateJobPostingInput, JobSource, JobStatus } from '../../domain/JobPosting'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -76,6 +77,7 @@ const SOURCES: JobSource[] = ['linkedin', 'infojobs', 'indeed']
 const STATUSES: JobStatus[] = ['saved', 'applied', 'interviewing', 'rejected', 'accepted', 'discarded']
 
 export function JobPostingForm({ initial, onSave, saving = false }: JobPostingFormProps) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<FormState>(() =>
     initial ? domainToForm(initial) : emptyForm(),
   )
@@ -185,7 +187,7 @@ export function JobPostingForm({ initial, onSave, saving = false }: JobPostingFo
                 <Input
                   value={form.location}
                   onChange={e => set('location', e.target.value)}
-                  placeholder="Madrid, Spain"
+                  placeholder={t('cv.fields.locationPlaceholder')}
                   className="text-sm h-8 flex-1"
                 />
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0">

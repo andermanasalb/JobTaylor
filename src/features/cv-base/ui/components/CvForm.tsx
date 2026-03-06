@@ -592,7 +592,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                     <Input
                       value={form.fullName}
                       onChange={e => set('fullName', e.target.value)}
-                      placeholder="Ana García"
+                       placeholder={t('cv.fields.fullNamePlaceholder')}
                       className="text-sm h-8"
                       required
                     />
@@ -603,7 +603,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                       type="email"
                       value={form.email}
                       onChange={e => set('email', e.target.value)}
-                      placeholder="ana@example.com"
+                       placeholder={t('cv.fields.emailPlaceholder')}
                       className="text-sm h-8"
                       required
                     />
@@ -615,7 +615,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                     <Input
                       value={form.phone}
                       onChange={e => set('phone', e.target.value)}
-                      placeholder="+34 600 000 000"
+                       placeholder={t('cv.fields.phonePlaceholder')}
                       className="text-sm h-8"
                     />
                   </div>
@@ -624,7 +624,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                     <Input
                       value={form.location}
                       onChange={e => set('location', e.target.value)}
-                      placeholder="Madrid, Spain"
+                       placeholder={t('cv.fields.locationPlaceholder')}
                       className="text-sm h-8"
                     />
                   </div>
@@ -634,7 +634,7 @@ export function CvForm({ initial, onSave, onAutoSave, saving = false, saveStatus
                   <Input
                     value={form.title}
                     onChange={e => set('title', e.target.value)}
-                    placeholder="Senior Frontend Developer"
+                    placeholder={t('cv.fields.professionalTitlePlaceholder')}
                     className="text-sm h-8"
                   />
                 </div>

@@ -13,7 +13,7 @@ test.describe('CV Base', () => {
     await clearAppStorage(page)
     await page.reload()
     // Ensure the editor tab is active (default)
-    await expect(page.getByPlaceholder('Ana García')).toBeVisible()
+    await expect(page.getByPlaceholder('Full name')).toBeVisible()
   })
 
   test('shows the three tabs: editor, preview, upload', async ({ page }) => {
@@ -24,14 +24,14 @@ test.describe('CV Base', () => {
   })
 
   test('fills personal info fields', async ({ page }) => {
-    await page.getByPlaceholder('Ana García').fill('Jane Doe')
-    await page.getByPlaceholder('ana@example.com').fill('jane@example.com')
-    await page.getByPlaceholder('+34 600 000 000').fill('+1 555 000 0000')
-    await page.getByPlaceholder('Madrid, Spain').fill('New York, USA')
-    await page.getByPlaceholder('Senior Frontend Developer').fill('Software Engineer')
+    await page.getByPlaceholder('Full name').fill('Jane Doe')
+    await page.getByPlaceholder('email@example.com').fill('jane@example.com')
+    await page.getByPlaceholder('+1 555 000 0000').fill('+1 555 000 0001')
+    await page.getByPlaceholder('City, Country').fill('New York, USA')
+    await page.getByPlaceholder('e.g. Senior Developer').fill('Software Engineer')
 
-    await expect(page.getByPlaceholder('Ana García')).toHaveValue('Jane Doe')
-    await expect(page.getByPlaceholder('ana@example.com')).toHaveValue('jane@example.com')
+    await expect(page.getByPlaceholder('Full name')).toHaveValue('Jane Doe')
+    await expect(page.getByPlaceholder('email@example.com')).toHaveValue('jane@example.com')
   })
 
   test('adds a skill via Enter key', async ({ page }) => {
@@ -83,8 +83,8 @@ test.describe('CV Base', () => {
 
   test('preview tab renders with filled data', async ({ page }) => {
     // Fill minimum required fields
-    await page.getByPlaceholder('Ana García').fill('Preview User')
-    await page.getByPlaceholder('ana@example.com').fill('preview@test.com')
+    await page.getByPlaceholder('Full name').fill('Preview User')
+    await page.getByPlaceholder('email@example.com').fill('preview@test.com')
 
     // Switch to preview tab
     await page.getByRole('tab', { name: 'preview' }).click()

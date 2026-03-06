@@ -25,7 +25,7 @@ test.describe('Sidebar navigation', () => {
   test('navigates to CV Base page', async ({ page }) => {
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'CV Base' }).click()
     await expect(page).toHaveURL(/\/cv/)
-    await expect(page.getByPlaceholder('Ana García')).toBeVisible()
+    await expect(page.getByPlaceholder('Full name')).toBeVisible()
   })
 
   test('navigates to History page', async ({ page }) => {
