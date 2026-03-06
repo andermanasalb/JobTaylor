@@ -15,6 +15,9 @@ export async function clearAppStorage(page: import('@playwright/test').Page) {
   await page.evaluate(() => {
     const keysToRemove = Object.keys(localStorage).filter(k => k.startsWith('jobtaylor-'))
     keysToRemove.forEach(k => localStorage.removeItem(k))
+    // Re-stamp activity so the inactivity guard (AuthContext) does not sign the
+    // user out immediately on reload due to a missing timestamp.
+    localStorage.setItem('jobtaylor-last-activity', String(Date.now()))
   })
 }
 
