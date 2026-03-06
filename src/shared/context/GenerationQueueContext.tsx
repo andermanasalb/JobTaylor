@@ -27,7 +27,6 @@ import type { TailoredCv } from '@/features/tailoring/domain/TailoredCv'
 import type { TailoredCvRepository } from '@/features/tailoring/application/ports/TailoredCvRepository'
 import type { HistoryRepository } from '@/features/history/application/ports/HistoryRepository'
 import type { AiClient } from '@/features/tailoring/application/ports/AiClient'
-import { OllamaAiClient } from '@/infra/ai/OllamaAiClient'
 import { GeminiAiClient } from '@/infra/ai/GeminiAiClient'
 import { listBaseCvs } from '@/features/cv-base/application/usecases/ListBaseCvs'
 import type { CvRepository } from '@/features/cv-base/application/ports/CvRepository'
@@ -55,7 +54,6 @@ export interface GenerationQueueDeps {
   tailoredCvRepository: TailoredCvRepository
   historyRepository: HistoryRepository
   aiClient: AiClient
-  aiMode: 'local' | string
   strictness: number
 }
 
@@ -156,9 +154,7 @@ export function GenerationQueueProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* non-critical */ }
 
-      const client = deps.aiMode === 'local'
-        ? new OllamaAiClient(deps.strictness, enrichedDescription, outputLanguage)
-        : new GeminiAiClient(deps.strictness, enrichedDescription, outputLanguage)
+      const client = new GeminiAiClient(deps.strictness, enrichedDescription, outputLanguage)
 
       const { tailoredData, gaps, suggestions } = await client.tailorCv(baseCv, jobPosting)
 

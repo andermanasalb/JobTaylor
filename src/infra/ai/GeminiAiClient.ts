@@ -43,11 +43,34 @@ export class GeminiAiClient implements AiClient {
 
     const data = await res.json()
 
-    // Fusionar el CV tailoreado con el original para preservar campos que Gemini pueda omitir
+    // Defensive merge: for each field we prefer the AI result when non-empty/non-null;
+    // otherwise we fall back to the original baseCv to avoid data loss.
+    const ai = data.tailoredCv ?? {}
+
+    function mergeArray<T>(aiArr: unknown, baseArr: T[]): T[] {
+      return Array.isArray(aiArr) && (aiArr as T[]).length > 0 ? (aiArr as T[]) : baseArr
+    }
+
+    // personalInfo can be spread flat by Gemini or nested — handle both
+    const aiPersonal = ai.personalInfo ?? ai
+    const mergedPersonalInfo = {
+      fullName: aiPersonal.fullName ?? baseCv.personalInfo.fullName,
+      email: aiPersonal.email ?? baseCv.personalInfo.email,
+      phone: aiPersonal.phone ?? baseCv.personalInfo.phone,
+      location: aiPersonal.location ?? baseCv.personalInfo.location,
+      title: aiPersonal.title ?? baseCv.personalInfo.title,
+    }
+
     const tailoredData: BaseCv = {
-      ...baseCv,
-      ...data.tailoredCv,
       id: baseCv.id,
+      name: baseCv.name,
+      personalInfo: mergedPersonalInfo,
+      summary: typeof ai.summary === 'string' && ai.summary.trim() ? ai.summary : baseCv.summary,
+      experience: mergeArray(ai.experience, baseCv.experience),
+      education: mergeArray(ai.education, baseCv.education),
+      skills: mergeArray(ai.skills, baseCv.skills),
+      languages: mergeArray(ai.languages, baseCv.languages),
+      links: mergeArray(ai.links, baseCv.links),
       createdAt: baseCv.createdAt,
       updatedAt: new Date(),
     }

@@ -1,4 +1,4 @@
-export type AiMode = 'local' | 'cloud'
+export type AiMode = 'cloud'
 export type OutputLanguage = 'EN' | 'ES'
 export type CvTemplate = 'modern' | 'classic' | 'minimal'
 export type ExportFormat = 'pdf' | 'docx' | 'md'
@@ -14,7 +14,7 @@ export interface AppSettings {
 
 export const defaultSettings: AppSettings = {
   aiMode: 'cloud',
-  outputLanguage: 'EN',
+  outputLanguage: 'ES',
   template: 'modern',
   strictness: 70,
   exportFormat: 'pdf',

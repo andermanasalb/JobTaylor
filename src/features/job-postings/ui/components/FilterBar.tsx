@@ -25,6 +25,8 @@ const WORK_MODES: WorkMode[] = ['Remote', 'Hybrid', 'On-site']
 interface FilterBarProps {
   query: string
   onQueryChange: (q: string) => void
+  company: string
+  onCompanyChange: (c: string) => void
   // Ubicaciones disponibles derivadas de los resultados actuales
   availableLocations: string[]
   selectedLocations: string[]
@@ -40,6 +42,8 @@ interface FilterBarProps {
 export function FilterBar({
   query,
   onQueryChange,
+  company,
+  onCompanyChange,
   availableLocations,
   selectedLocations,
   onLocationsChange,
@@ -51,7 +55,7 @@ export function FilterBar({
   onSearch,
 }: FilterBarProps) {
   const { t } = useTranslation()
-  const hasFilters = query || selectedLocations.length > 0 || remoteOnly || workMode !== 'all'
+  const hasFilters = query || company || selectedLocations.length > 0 || remoteOnly || workMode !== 'all'
 
   function toggleLocation(loc: string) {
     if (selectedLocations.includes(loc)) {
@@ -82,6 +86,16 @@ export function FilterBar({
           </Button>
         )}
       </div>
+
+      {/* Company input */}
+      <Input
+        type="search"
+        placeholder={t('filter.companyPlaceholder')}
+        value={company}
+        onChange={e => onCompanyChange(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && onSearch?.()}
+        className="h-9 text-sm"
+      />
 
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2">

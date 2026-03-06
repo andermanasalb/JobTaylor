@@ -55,6 +55,8 @@
     "allModes": "Todas",
     "remoteOnly": "Solo remoto",
     "clear": "Limpiar",
+    "company": "Empresa",
+    "companyPlaceholder": "Filtrar por empresa...",
     "workMode": {
       "Remote": "Remoto",
       "Hybrid": "Híbrido",

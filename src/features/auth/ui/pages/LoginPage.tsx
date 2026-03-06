@@ -15,6 +15,17 @@ type Mode = 'login' | 'register'
 const MAX_ATTEMPTS = 3
 const LOCKOUT_SECONDS = 60
 
+/**
+ * Per-email rate limiting state. Module-level so it is not reset when switching
+ * between login and register modes, but IS reset on page reload (intentional —
+ * this is a lightweight UI guard, not a security control).
+ */
+interface EmailRateLimit {
+  attempts: number
+  lockedUntil: number | null
+}
+const emailRateLimitMap = new Map<string, EmailRateLimit>()
+
 /** Basic email format check — just catches obvious typos, Supabase validates properly server-side. */
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -43,12 +54,17 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [registered, setRegistered] = useState(false)
 
-  // Rate limiting
-  const [attempts, setAttempts] = useState(0)
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null)
-
-  const isLocked = lockedUntil !== null && Date.now() < lockedUntil
-  const remainingAttempts = MAX_ATTEMPTS - attempts
+  // Rate limiting — derived from per-email module-level map; use a counter to
+  // force re-renders after each failed attempt without storing state in useState.
+  const [rateLimitTick, setRateLimitTick] = useState(0)
+  // rateLimitTick is intentionally only written, never read directly —
+  // its sole purpose is to trigger a re-render so the map read below reflects
+  // the latest state. The void suppresses the unused-variable lint rule.
+  void rateLimitTick
+  const trimmedEmailForLimit = email.trim().toLowerCase()
+  const emailLimit = emailRateLimitMap.get(trimmedEmailForLimit) ?? { attempts: 0, lockedUntil: null }
+  const isLocked = emailLimit.lockedUntil !== null && Date.now() < emailLimit.lockedUntil
+  const remainingAttempts = MAX_ATTEMPTS - emailLimit.attempts
 
   // ── Derived validation ──────────────────────────────────────────────────────
   const emailValid = isValidEmail(email)
@@ -78,9 +94,20 @@ export function LoginPage() {
     try {
       if (mode === 'login') {
         await authRepository.signInWithEmail(trimmedEmail, password)
+        // Stamp activity so the inactivity check in AuthContext does not
+        // immediately expire the session we just created (OWASP A07).
+        localStorage.setItem('jobtaylor-last-activity', String(Date.now()))
         navigate(from, { replace: true })
       } else {
         await authRepository.signUpWithEmail(trimmedEmail, password, name.trim())
+        // Ensure the default output language is ES for new accounts
+        try {
+          const raw = localStorage.getItem('jobtaylor-settings')
+          const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+          if (!existing.outputLanguage) {
+            localStorage.setItem('jobtaylor-settings', JSON.stringify({ ...existing, outputLanguage: 'ES' }))
+          }
+        } catch { /* localStorage unavailable — silently ignore */ }
         setRegistered(true)
       }
     } catch (err) {
@@ -90,11 +117,11 @@ export function LoginPage() {
 
       // Rate limiting only applies to login attempts
       if (mode === 'login') {
-        const newAttempts = attempts + 1
-        setAttempts(newAttempts)
-        if (newAttempts >= MAX_ATTEMPTS) {
-          setLockedUntil(Date.now() + LOCKOUT_SECONDS * 1000)
-        }
+        const current = emailRateLimitMap.get(trimmedEmail) ?? { attempts: 0, lockedUntil: null }
+        const newAttempts = current.attempts + 1
+        const newLockedUntil = newAttempts >= MAX_ATTEMPTS ? Date.now() + LOCKOUT_SECONDS * 1000 : current.lockedUntil
+        emailRateLimitMap.set(trimmedEmail, { attempts: newAttempts, lockedUntil: newLockedUntil })
+        setRateLimitTick(t => t + 1)
       }
     } finally {
       setLoading(false)
@@ -105,8 +132,7 @@ export function LoginPage() {
     setMode(m => (m === 'login' ? 'register' : 'login'))
     setError(null)
     setRegistered(false)
-    setAttempts(0)
-    setLockedUntil(null)
+    setRateLimitTick(0)
   }
 
   const disabled = loading || isLocked
@@ -233,7 +259,7 @@ export function LoginPage() {
             {error && !isLocked && (
               <div className="flex flex-col gap-0.5">
                 <p className="text-xs text-destructive text-center">{error}</p>
-                  {mode === 'login' && attempts > 0 && attempts < MAX_ATTEMPTS && (
+                  {mode === 'login' && emailLimit.attempts > 0 && emailLimit.attempts < MAX_ATTEMPTS && (
                     <p className="text-xs text-muted-foreground text-center">
                       {t('auth.remainingAttempts', { count: remainingAttempts })}
                     </p>

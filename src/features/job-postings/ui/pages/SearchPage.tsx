@@ -48,12 +48,13 @@ export function SearchPage() {
   const navigate = useNavigate()
   const generationQueue = useGenerationQueue()
   const { t } = useTranslation()
-  // Reactive adapters — rebuild when aiMode changes
-  const jobEnrichmentPort = useEnrichmentAdapter(settings.aiMode)
-  const scoreAdapter = useScoreAdapter(settings.aiMode)
+  // Reactive adapters — always Gemini
+  const jobEnrichmentPort = useEnrichmentAdapter()
+  const scoreAdapter = useScoreAdapter()
 
   // ── Estado persistido en sessionStorage (sobrevive navegación entre páginas) ──
   const [query, setQuery] = useState<string>(() => sessionStorage.getItem('search.query') ?? '')
+  const [company, setCompany] = useState<string>(() => sessionStorage.getItem('search.company') ?? '')
   const [selectedLocations, setSelectedLocations] = useState<string[]>(() => {
     try { return JSON.parse(sessionStorage.getItem('search.locations') ?? '[]') } catch { return [] }
   })
@@ -149,6 +150,7 @@ export function SearchPage() {
 
   // Persistir todo el estado de búsqueda en sessionStorage
   useEffect(() => { sessionStorage.setItem('search.query', query) }, [query])
+  useEffect(() => { sessionStorage.setItem('search.company', company) }, [company])
   useEffect(() => { sessionStorage.setItem('search.locations', JSON.stringify(selectedLocations)) }, [selectedLocations])
   useEffect(() => { sessionStorage.setItem('search.workMode', workMode) }, [workMode])
   useEffect(() => { sessionStorage.setItem('search.remoteOnly', String(remoteOnly)) }, [remoteOnly])
@@ -170,7 +172,7 @@ export function SearchPage() {
   }, [enrichedJobs])
 
   // Core fetch — page=1 replaces list, page>1 appends
-  const fetchListings = useCallback(async (keywords?: string, page = 1) => {
+  const fetchListings = useCallback(async (keywords?: string, page = 1, companyFilter?: string) => {
     if (page === 1) {
       setIsLoading(true)
       setFeedError(null)
@@ -182,6 +184,7 @@ export function SearchPage() {
     try {
       const results = await jobFeedPort.search({
         keywords: keywords?.trim() || undefined,
+        company: companyFilter?.trim() || undefined,
         page,
       })
       if (page === 1) {
@@ -211,7 +214,18 @@ export function SearchPage() {
     setVisibleCount(PAGE_SIZE)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      fetchListings(value, 1)
+      fetchListings(value, 1, company)
+    }, DEBOUNCE_MS)
+  }
+
+  function handleCompanyChange(value: string) {
+    setCompany(value)
+    setCurrentPage(1)
+    setApiHasMore(true)
+    setVisibleCount(PAGE_SIZE)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      fetchListings(query, 1, value)
     }, DEBOUNCE_MS)
   }
 
@@ -220,7 +234,7 @@ export function SearchPage() {
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
-    fetchListings(query, 1)
+    fetchListings(query, 1, company)
   }
 
   // Init
@@ -234,7 +248,8 @@ export function SearchPage() {
     // Restaurar búsqueda guardada — si ya hay resultados en caché los mostramos
     // y relanzamos la búsqueda en background para refrescar
     const savedQuery = sessionStorage.getItem('search.query') ?? ''
-    fetchListings(savedQuery || undefined, 1)
+    const savedCompany = sessionStorage.getItem('search.company') ?? ''
+    fetchListings(savedQuery || undefined, 1, savedCompany || undefined)
 
     listHistoryEntries(historyRepository)
       .then(entries => {
@@ -270,8 +285,10 @@ export function SearchPage() {
     // Si no está, guardamos el jobId y limpiamos la búsqueda para recargar todos los resultados
     pendingJobIdRef.current = jobId
     setQuery('')
+    setCompany('')
     sessionStorage.setItem('search.query', '')
-    fetchListings(undefined, 1)
+    sessionStorage.setItem('search.company', '')
+    fetchListings(undefined, 1, undefined)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
@@ -345,13 +362,13 @@ export function SearchPage() {
       if (visibleCount < filteredJobs.length) {
         setVisibleCount(prev => prev + PAGE_SIZE)
       } else if (apiHasMore) {
-        fetchListings(query, currentPage + 1)
+        fetchListings(query, currentPage + 1, company)
       }
     }
 
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
-  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, fetchListings])
+  }, [isLoading, isLoadingMore, hasMore, visibleCount, filteredJobs.length, apiHasMore, currentPage, query, company, fetchListings])
 
   // Seleccionar job: lanza enrichment y scoring on-demand con caché
   async function handleSelectJob(job: SearchListing) {
@@ -369,7 +386,7 @@ export function SearchPage() {
 
     if (job.url && !alreadyEnriched && !enrichmentInProgress) {
       setEnrichingJobId(job.id)
-      console.log(`[enrichment] Starting enrichment for job ${job.id} (aiMode=${settings.aiMode}) url=${job.url}`)
+      console.log(`[enrichment] Starting enrichment for job ${job.id} url=${job.url}`)
       enrichmentPromise = jobEnrichmentPort.enrich(job.url, settings.outputLanguage)
         .then(enriched => {
           console.log(`[enrichment] Success for job ${job.id}`, enriched)
@@ -396,7 +413,7 @@ export function SearchPage() {
           // Preferimos la descripción enriquecida; fallback a Adzuna description
           const jobDescription = enriched?.description ?? job.description ?? ''
           if (!jobDescription) throw new Error('No job description available for scoring')
-          console.log(`[scoring] Starting for job ${job.id} (aiMode=${settings.aiMode})`)
+          console.log(`[scoring] Starting for job ${job.id}`)
           return scoreAdapter.score(cvPreview, jobDescription)
         })
         .then(result => {
@@ -434,7 +451,6 @@ export function SearchPage() {
       tailoredCvRepository,
       historyRepository,
       aiClient,
-      aiMode: settings.aiMode,
       strictness: settings.strictness,
     })
     // Marcar como guardada en historial si no lo está ya
@@ -488,13 +504,14 @@ export function SearchPage() {
 
   function clearFilters() {
     setQuery('')
+    setCompany('')
     setSelectedLocations([])
     setWorkMode('all')
     setRemoteOnly(false)
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
-    fetchListings(undefined, 1)
+    fetchListings(undefined, 1, undefined)
   }
 
   return (
@@ -505,6 +522,8 @@ export function SearchPage() {
           <FilterBar
             query={query}
             onQueryChange={handleQueryChange}
+            company={company}
+            onCompanyChange={handleCompanyChange}
             availableLocations={availableLocations}
             selectedLocations={selectedLocations}
             onLocationsChange={setSelectedLocations}

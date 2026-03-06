@@ -5,10 +5,8 @@ import { LocalStorageHistoryRepository } from '../infra/memory/LocalStorageHisto
 import { FakeAiClient } from '../infra/ai/FakeAiClient'
 import { FakeJobFeedAdapter } from '../infra/job-feed/FakeJobFeedAdapter'
 import { FakeEnrichmentAdapter } from '../infra/enrichment/FakeEnrichmentAdapter'
-import { OllamaEnrichmentAdapter } from '../infra/enrichment/OllamaEnrichmentAdapter'
 import { GeminiEnrichmentAdapter } from '../infra/enrichment/GeminiEnrichmentAdapter'
 import { FakeScoringAdapter } from '../infra/scoring/FakeScoringAdapter'
-import { OllamaScoringAdapter } from '../infra/scoring/OllamaScoringAdapter'
 import { GeminiScoringAdapter } from '../infra/scoring/GeminiScoringAdapter'
 import type { CvRepository } from '../features/cv-base/application/ports/CvRepository'
 import type { JobPostingRepository } from '../features/job-postings/application/ports/JobPostingRepository'
@@ -35,35 +33,6 @@ export interface AppDependencies {
 const useSupabase = import.meta.env.VITE_USE_SUPABASE === 'true'
 const adzunaAppId = import.meta.env.VITE_ADZUNA_APP_ID as string | undefined
 const adzunaAppKey = import.meta.env.VITE_ADZUNA_APP_KEY as string | undefined
-
-/**
- * Reads the current aiMode from localStorage (same key as useSettings).
- * Falls back to 'cloud' (the default) if not set.
- */
-function readAiMode(): string {
-  try {
-    const raw = localStorage.getItem('jobtaylor-settings')
-    if (!raw) return 'cloud'
-    const parsed = JSON.parse(raw) as { aiMode?: string }
-    return parsed.aiMode ?? 'cloud'
-  } catch {
-    return 'cloud'
-  }
-}
-
-function buildEnrichmentAdapter(): JobEnrichmentPort {
-  const aiMode = readAiMode()
-  if (aiMode === 'cloud') return new GeminiEnrichmentAdapter()
-  if (aiMode === 'local') return new OllamaEnrichmentAdapter()
-  return new FakeEnrichmentAdapter()
-}
-
-function buildScoringAdapter(): ScoringPort {
-  const aiMode = readAiMode()
-  if (aiMode === 'cloud') return new GeminiScoringAdapter()
-  if (aiMode === 'local') return new OllamaScoringAdapter()
-  return new FakeScoringAdapter()
-}
 
 /**
  * Composition root.
@@ -106,8 +75,8 @@ async function buildDeps(): Promise<AppDependencies> {
       jobFeedPort: adzunaAppId && adzunaAppKey
         ? new AdzunaJobFeedAdapter(adzunaAppId, adzunaAppKey)
         : new FakeJobFeedAdapter(),
-      jobEnrichmentPort: buildEnrichmentAdapter(),
-      scoringPort: buildScoringAdapter(),
+      jobEnrichmentPort: new GeminiEnrichmentAdapter(),
+      scoringPort: new GeminiScoringAdapter(),
     }
   }
 
@@ -121,8 +90,8 @@ async function buildDeps(): Promise<AppDependencies> {
     historyRepository: new LocalStorageHistoryRepository(),
     authRepository: new FakeAuthRepository(),
     jobFeedPort: new FakeJobFeedAdapter(),
-    jobEnrichmentPort: buildEnrichmentAdapter(),
-    scoringPort: buildScoringAdapter(),
+    jobEnrichmentPort: new FakeEnrichmentAdapter(),
+    scoringPort: new FakeScoringAdapter(),
   }
 }
 

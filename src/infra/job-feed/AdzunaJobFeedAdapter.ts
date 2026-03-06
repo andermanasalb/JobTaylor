@@ -111,7 +111,16 @@ export class AdzunaJobFeedAdapter implements JobFeedPort {
       sort_by: 'date',
     })
 
-    if (criteria.keywords) params.set('title_only', criteria.keywords)
+    if (criteria.keywords && criteria.company) {
+      // When both keywords and company are provided, use the free-text `what` param
+      // so both terms are matched across the full listing, and add company filter.
+      params.set('what', criteria.keywords)
+      params.set('company', criteria.company)
+    } else if (criteria.keywords) {
+      params.set('title_only', criteria.keywords)
+    } else if (criteria.company) {
+      params.set('company', criteria.company)
+    }
     if (criteria.location) params.set('where', criteria.location)
     if (criteria.remote) params.set('what_or', 'remote remoto')
 
