@@ -3,6 +3,8 @@ import type { SearchListing, WorkMode, Seniority } from '../../features/job-post
 
 // ---------------------------------------------------------------------------
 // Adzuna API response types (subset of what we use)
+// Returned by the proxy's /search-jobs endpoint, which forwards the raw
+// Adzuna response — so the shape is identical.
 // ---------------------------------------------------------------------------
 interface AdzunaLocation {
   display_name: string
@@ -89,40 +91,31 @@ function extractTags(text: string): string[] {
 // Adapter
 // ---------------------------------------------------------------------------
 
+const PROXY_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
+
+/**
+ * Job feed adapter that fetches listings via the local proxy (/search-jobs).
+ * The proxy holds the Adzuna API keys (ADZUNA_APP_ID / ADZUNA_APP_KEY) so
+ * they are never bundled into the browser.
+ */
 export class AdzunaJobFeedAdapter implements JobFeedPort {
-  private readonly appId: string
-  private readonly appKey: string
-  private readonly baseUrl = 'https://api.adzuna.com/v1/api'
-
-  constructor(appId: string, appKey: string) {
-    this.appId = appId
-    this.appKey = appKey
-  }
-
   async search(criteria: JobSearchCriteria): Promise<SearchListing[]> {
-    const country = criteria.country ?? 'es'
-    const resultsPerPage = criteria.resultsPerPage ?? 20
-    const page = criteria.page ?? 1
-
-    const params = new URLSearchParams({
-      app_id: this.appId,
-      app_key: this.appKey,
-      results_per_page: String(resultsPerPage),
-      sort_by: 'date',
+    const response = await fetch(`${PROXY_URL}/search-jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keywords: criteria.keywords,
+        location: criteria.location,
+        remote: criteria.remote,
+        country: criteria.country ?? 'es',
+        page: criteria.page ?? 1,
+        resultsPerPage: criteria.resultsPerPage ?? 20,
+      }),
     })
 
-    if (criteria.keywords) {
-      params.set('title_only', criteria.keywords)
-    }
-    if (criteria.location) params.set('where', criteria.location)
-    if (criteria.remote) params.set('what_or', 'remote remoto')
-
-    const url = `${this.baseUrl}/jobs/${country}/search/${page}?${params.toString()}`
-
-    const response = await fetch(url)
     if (!response.ok) {
       const text = await response.text()
-      throw new Error(`Adzuna API error ${response.status}: ${text}`)
+      throw new Error(`Adzuna proxy error ${response.status}: ${text}`)
     }
 
     const data: AdzunaSearchResponse = await response.json()
@@ -142,10 +135,10 @@ export class AdzunaJobFeedAdapter implements JobFeedPort {
         seniority: inferSeniority(job.title),
         postedDate,
         source: 'Adzuna',
-        matchScore: 0,           // no AI scoring yet — will be computed in Stage 1.6 AI step
+        matchScore: 0,
         tags: extractTags(job.description ?? ''),
         description: job.description ?? null,
-        requirements: [],        // Adzuna doesn't provide structured requirements
+        requirements: [],
         niceToHave: [],
         techStack: extractTags(job.description ?? ''),
         notes: job.redirect_url ? `Ver oferta: ${job.redirect_url}` : '',

@@ -18,6 +18,8 @@ const PORT = 3001
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview'
+const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID
+const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY
 // Allowed CORS origin — defaults to Vite dev server; override via ALLOWED_ORIGIN env var
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173'
 // Límite para Gemini — ventana de contexto de 1M tokens, podemos enviar mucho más
@@ -804,14 +806,57 @@ ${truncated}`
   }
 })
 
+// ---------------------------------------------------------------------------
+// POST /search-jobs — body: { keywords?, location?, remote?, country?, page?, resultsPerPage? }
+// Proxies the Adzuna job search API so keys never reach the browser.
+// ---------------------------------------------------------------------------
+app.post('/search-jobs', async (req, res) => {
+  if (!ADZUNA_APP_ID || !ADZUNA_APP_KEY) {
+    console.error('[search-jobs] ADZUNA_APP_ID or ADZUNA_APP_KEY not set — restart proxy with --env-file=.env.local')
+    return res.status(503).json({ error: 'Adzuna API keys not configured in proxy environment' })
+  }
+
+  const { keywords, location, remote, country = 'es', page = 1, resultsPerPage = 20 } = req.body
+
+  const params = new URLSearchParams({
+    app_id: ADZUNA_APP_ID,
+    app_key: ADZUNA_APP_KEY,
+    results_per_page: String(resultsPerPage),
+    sort_by: 'date',
+  })
+
+  if (keywords) params.set('title_only', keywords)
+  if (location) params.set('where', location)
+  if (remote) params.set('what_or', 'remote remoto')
+
+  const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/${page}?${params.toString()}`
+
+  try {
+    console.log(`[search-jobs] country=${country} page=${page} keywords=${keywords ?? ''} location=${location ?? ''} remote=${!!remote}`)
+    const adzunaRes = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    if (!adzunaRes.ok) {
+      const errBody = await adzunaRes.text()
+      throw new Error(`Adzuna HTTP ${adzunaRes.status}: ${errBody}`)
+    }
+    const data = await adzunaRes.json()
+    console.log(`[search-jobs] Adzuna OK — ${data.results?.length ?? 0} results`)
+    return res.json(data)
+  } catch (err) {
+    console.error('[search-jobs] Adzuna failed:', err)
+    return res.status(502).json({ error: `Adzuna search failed: ${err}` })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`\nJobTaylor Proxy corriendo en http://localhost:${PORT}`)
   console.log(`  Gemini key : ${GEMINI_API_KEY ? '✓ set' : '✗ NOT SET — cloud features will fail'}`)
   console.log(`  Gemini model: ${GEMINI_MODEL}`)
   console.log(`  Tavily key : ${TAVILY_API_KEY ? '✓ set' : '✗ NOT SET — job enrichment will fail'}`)
-  console.log(`  GET  /health    — comprueba estado`)
-  console.log(`  POST /enrich    — enriquece una oferta a partir de su URL`)
-  console.log(`  POST /score     — compatibilidad CV ↔ oferta (0-100)`)
-  console.log(`  POST /tailor    — genera CV adaptado con guardrails`)
-  console.log(`  POST /parse-cv  — parsea texto de CV con heurística + Gemini\n`)
+  console.log(`  Adzuna     : ${ADZUNA_APP_ID && ADZUNA_APP_KEY ? '✓ set' : '✗ NOT SET — job search will fail'}`)
+  console.log(`  GET  /health       — comprueba estado`)
+  console.log(`  POST /search-jobs  — búsqueda de ofertas (Adzuna)`)
+  console.log(`  POST /enrich       — enriquece una oferta a partir de su URL`)
+  console.log(`  POST /score        — compatibilidad CV ↔ oferta (0-100)`)
+  console.log(`  POST /tailor       — genera CV adaptado con guardrails`)
+  console.log(`  POST /parse-cv     — parsea texto de CV con heurística + Gemini\n`)
 })

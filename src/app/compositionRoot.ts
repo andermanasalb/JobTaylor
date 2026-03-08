@@ -28,8 +28,6 @@ export interface AppDependencies {
 }
 
 const useSupabase = import.meta.env.VITE_USE_SUPABASE === 'true'
-const adzunaAppId = import.meta.env.VITE_ADZUNA_APP_ID as string | undefined
-const adzunaAppKey = import.meta.env.VITE_ADZUNA_APP_KEY as string | undefined
 
 /**
  * Composition root.
@@ -53,7 +51,6 @@ async function buildDeps(): Promise<AppDependencies> {
       { SupabaseAuthRepository },
       { SupabaseHistoryRepository },
       { AdzunaJobFeedAdapter },
-      { FakeJobFeedAdapter },
     ] = await Promise.all([
       import('../infra/supabase/SupabaseCvRepository'),
       import('../infra/supabase/SupabaseJobPostingRepository'),
@@ -61,7 +58,6 @@ async function buildDeps(): Promise<AppDependencies> {
       import('../infra/supabase/SupabaseAuthRepository'),
       import('../infra/supabase/SupabaseHistoryRepository'),
       import('../infra/job-feed/AdzunaJobFeedAdapter'),
-      import('../infra/job-feed/FakeJobFeedAdapter'),
     ])
 
     return {
@@ -71,16 +67,7 @@ async function buildDeps(): Promise<AppDependencies> {
       aiClient: new GeminiAiClient(),
       historyRepository: new SupabaseHistoryRepository(),
       authRepository: new SupabaseAuthRepository(),
-      jobFeedPort: adzunaAppId && adzunaAppKey
-        ? new AdzunaJobFeedAdapter(adzunaAppId, adzunaAppKey)
-        : (() => {
-            console.warn(
-              '[JobTaylor] VITE_ADZUNA_APP_ID or VITE_ADZUNA_APP_KEY is not set. ' +
-              'Using FakeJobFeedAdapter — job search will return mock data. ' +
-              'Set both keys in .env.local to enable real job listings.'
-            )
-            return new FakeJobFeedAdapter()
-          })(),
+      jobFeedPort: new AdzunaJobFeedAdapter(),
       jobEnrichmentPort: new GeminiEnrichmentAdapter(),
       scoringPort: new GeminiScoringAdapter(),
     }
