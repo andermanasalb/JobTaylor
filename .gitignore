@@ -33,3 +33,7 @@ coverage/
 
 # Windows artifacts
 nul
+
+# Supabase CLI internal files (auto-generated, not needed in repo)
+supabase/.branches/
+supabase/.temp/
