@@ -165,7 +165,7 @@ UI → application (casos de uso) → domain (lógica pura)
 infra implementa los puertos       (sin dependencias externas)
 ```
 
-La capa de dominio no tiene dependencias de React, Supabase ni ninguna librería externa. La composición de dependencias se realiza en `src/app/AppDepsContext.tsx`.
+La capa de dominio no tiene dependencias de React, Supabase ni ninguna librería externa. La composición de dependencias se realiza en `src/app/AppDepsContext.tsx`. El desarrollo de dominio y aplicación sigue **TDD**: cada comportamiento se especifica primero como test antes de implementarse.
 
 ---
 
@@ -257,6 +257,8 @@ npm run verify       # quality + test:e2e + build (gate completo — ejecutado e
 ---
 
 ## Tests
+
+El proyecto se ha desarrollado siguiendo **TDD (Test-Driven Development)** en las capas de dominio y aplicación: primero se escribe el test que describe el comportamiento esperado (rojo), luego el código mínimo para hacerlo pasar (verde) y finalmente se refactoriza sin cambiar el comportamiento (refactor). Los tests de UI se cubren mediante E2E con Playwright.
 
 ### Unitarios (Vitest)
 
