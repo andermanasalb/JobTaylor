@@ -1,0 +1,19 @@
+{
+  "name": "jobtaylor-proxy",
+  "version": "1.0.0",
+  "description": "Express proxy for JobTaylor — holds API keys server-side",
+  "main": "server.cjs",
+  "scripts": {
+    "start": "node server.cjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "node-fetch": "^2.7.0",
+    "node-html-parser": "^6.1.13"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
