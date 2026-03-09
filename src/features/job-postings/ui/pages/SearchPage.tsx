@@ -93,6 +93,10 @@ export function SearchPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tracks whether the component has already mounted — used to prevent the
+  // remoteOnly / selectedLocations effects from firing a redundant fetch on
+  // the very first render (the init effect handles that fetch).
+  const isMountedRef = useRef(false)
 
   // Pool acumulativo de ciudades normalizadas vistas en resultados sin filtro.
   // Solo crece — nunca se vacía cuando el usuario activa un filtro de ubicación,
@@ -156,20 +160,26 @@ export function SearchPage() {
   useEffect(() => { sessionStorage.setItem('search.remoteOnly', String(remoteOnly)) }, [remoteOnly])
   useEffect(() => { sessionStorage.setItem('search.sortBy', sortBy) }, [sortBy])
 
-  // Cuando cambia remoteOnly, hacer nueva búsqueda con el filtro
+  // Cuando cambia remoteOnly, hacer nueva búsqueda con el filtro.
+  // El guard evita el fetch redundante del primer render (lo hace el init effect).
   useEffect(() => {
+    if (!isMountedRef.current) return
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
     fetchListings(query || undefined, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteOnly])
 
-  // Cuando cambia la selección de ubicaciones, hacer nueva búsqueda en la API
+  // Cuando cambia la selección de ubicaciones, hacer nueva búsqueda en la API.
+  // El guard evita el fetch redundante del primer render (lo hace el init effect).
   useEffect(() => {
+    if (!isMountedRef.current) return
     setCurrentPage(1)
     setApiHasMore(true)
     setVisibleCount(PAGE_SIZE)
     fetchListings(query || undefined, 1, remoteOnly, selectedLocations.length > 0 ? selectedLocations : undefined)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocations])
   useEffect(() => {
     if (selectedJob) sessionStorage.setItem('search.selectedJob', JSON.stringify(selectedJob))
@@ -311,11 +321,18 @@ export function SearchPage() {
       })
       .catch(console.error)
 
+    // Mark as mounted so the remoteOnly/selectedLocations effects know they
+    // can trigger their own fetches from here on.
+    isMountedRef.current = true
+
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
+  // fetchListings is stable (useCallback on [jobFeedPort, t]).
+  // remoteOnly and selectedLocations are read from the closure at mount time —
+  // their changes after mount are handled by the dedicated effects above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyRepository])
+  }, [historyRepository, fetchListings])
 
   // Pre-select a job when navigating from History.
   // Uses jobFeedPort.search() directly so we never replace the user's current results.
