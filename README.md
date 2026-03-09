@@ -1,5 +1,7 @@
 # JobTaylor
 
+> **Presentacion del proyecto:** [Presentacion JobTaylor.pptx](presentacion-ppt/Presentacion%20JobTaylor.pptx)
+
 **JobTaylor** es una aplicación web que ayuda a los candidatos a adaptar su CV a ofertas de empleo concretas usando inteligencia artificial. La IA reescribe y reordena el contenido del CV Base para destacar lo más relevante de cara a cada oferta — sin inventar experiencia, títulos, fechas ni certificaciones.
 
 ---
