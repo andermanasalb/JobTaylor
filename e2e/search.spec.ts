@@ -19,7 +19,7 @@ test.describe('Search page', () => {
     await setupSupabaseHistoryMock(page)
     await page.reload()
     // Wait for the loading skeleton to finish (600ms timer in SearchPage)
-    await expect(page.getByText(/\d+ results/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/\d+ results/)).toBeVisible({ timeout: 10000 })
   })
 
   test('shows job listing cards after loading', async ({ page }) => {

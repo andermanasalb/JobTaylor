@@ -68,7 +68,7 @@ test.describe.serial('History page', () => {
     await clearSupabaseHistory(page)
     await page.reload()
     // Wait for the heading to be visible (page loaded)
-    await expect(page.getByRole('heading', { name: 'History' })).toBeVisible({ timeout: 8000 })
+    await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible({ timeout: 8000 })
     // Wait for data to load and empty state to appear
     await expect(page.getByText('No history yet')).toBeVisible({ timeout: 8000 })
   })
