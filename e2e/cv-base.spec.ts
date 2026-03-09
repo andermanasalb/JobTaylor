@@ -61,24 +61,28 @@ test.describe('CV Base', () => {
   test('adds an experience entry', async ({ page }) => {
     await page.getByRole('button', { name: 'Add' }).first().click()
 
-    // Entry fields should appear
-    await expect(page.getByPlaceholder('Job title')).toBeVisible()
-    await page.getByPlaceholder('Job title').fill('Software Engineer')
-    await page.getByPlaceholder('Company').fill('Acme Corp')
-    await page.getByPlaceholder('Start (YYYY-MM)').fill('2020-01')
+    // Entry fields should appear (use .first() — prior tests may have left entries)
+    await expect(page.getByPlaceholder('Job title').first()).toBeVisible()
+    await page.getByPlaceholder('Job title').first().fill('Software Engineer')
+    await page.getByPlaceholder('Company').first().fill('Acme Corp')
+    await page.getByPlaceholder('Start (YYYY-MM)').first().fill('2020-01')
 
-    await expect(page.getByPlaceholder('Job title')).toHaveValue('Software Engineer')
-    await expect(page.getByPlaceholder('Company')).toHaveValue('Acme Corp')
+    await expect(page.getByPlaceholder('Job title').first()).toHaveValue('Software Engineer')
+    await expect(page.getByPlaceholder('Company').first()).toHaveValue('Acme Corp')
   })
 
   test('removes an experience entry', async ({ page }) => {
-    // Add one entry first
+    // Count existing entries before adding (may be non-zero from prior tests)
+    const countBefore = await page.getByPlaceholder('Job title').count()
+
+    // Add one entry
     await page.getByRole('button', { name: 'Add' }).first().click()
-    await expect(page.getByPlaceholder('Job title')).toBeVisible()
+    await expect(page.getByPlaceholder('Job title').first()).toBeVisible()
+    await expect(page.getByPlaceholder('Job title')).toHaveCount(countBefore + 1)
 
     // Remove it
-    await page.getByRole('button', { name: 'Remove experience' }).click()
-    await expect(page.getByPlaceholder('Job title')).not.toBeVisible()
+    await page.getByRole('button', { name: 'Remove experience' }).first().click()
+    await expect(page.getByPlaceholder('Job title')).toHaveCount(countBefore)
   })
 
   test('preview tab renders with filled data', async ({ page }) => {
