@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { clearAppStorage, clearSupabaseHistory, setupAdzunaMock, setupProxyMock } from './fixtures'
+import { clearAppStorage, clearSupabaseHistory, setupProxyMock } from './fixtures'
 
 /**
  * History page tests.
@@ -12,7 +12,6 @@ import { clearAppStorage, clearSupabaseHistory, setupAdzunaMock, setupProxyMock 
  *  Supabase to persist the entry before returning. */
 async function saveFirstJob(page: import('@playwright/test').Page) {
   // Set up mocks before navigating so all network calls are intercepted.
-  await setupAdzunaMock(page)
   await setupProxyMock(page)
   await page.goto('/search')
   // Clear stale app state (localStorage + sessionStorage) so SearchPage starts fresh.

@@ -127,18 +127,95 @@ export async function setupAdzunaMock(page: Page) {
  * a running proxy or Gemini API key.
  *
  * Mocked endpoints:
- *   POST /tailor   → returns a minimal valid AiTailorResult
- *   POST /score    → returns a fixed score of 80
- *   POST /enrich   → returns an empty enrichment object
- *   POST /parse-cv → returns an empty parsed CV object
- *   GET  /health   → returns { proxy: 'ok', gemini: 'mocked' }
+ *   POST /search-jobs → returns mock job listings (Adzuna format)
+ *   POST /tailor      → returns a minimal valid AiTailorResult
+ *   POST /score       → returns a fixed score of 80
+ *   POST /enrich      → returns an empty enrichment object
+ *   POST /parse-cv    → returns an empty parsed CV object
+ *   GET  /health      → returns { proxy: 'ok', gemini: 'mocked' }
  */
 export async function setupProxyMock(page: Page) {
   await page.route('http://localhost:3001/**', async route => {
     const url = route.request().url()
     const path = new URL(url).pathname
 
-    if (path === '/tailor') {
+    if (path === '/search-jobs') {
+      const body = route.request().postDataJSON() as {
+        keywords?: string
+        location?: string
+        remote?: boolean
+      } | null
+      const keyword = (body?.keywords ?? '').toLowerCase()
+      const remoteOnly = body?.remote ?? false
+
+      const allJobs = [
+        {
+          id: 'job-1',
+          title: 'Senior Software Engineer',
+          company: { display_name: 'BasqueCloud' },
+          location: { display_name: 'Bilbao, País Vasco' },
+          description: 'TypeScript React Node.js cloud infrastructure team.',
+          created: '2026-02-20T00:00:00Z',
+          redirect_url: 'https://example.com/job-1',
+        },
+        {
+          id: 'job-2',
+          title: 'Backend Engineer',
+          company: { display_name: 'AeroTech' },
+          location: { display_name: 'Madrid, Spain' },
+          description: 'Python Go microservices architecture.',
+          created: '2026-02-18T00:00:00Z',
+          redirect_url: 'https://example.com/job-2',
+        },
+        {
+          id: 'job-4',
+          title: 'Full Stack Developer',
+          company: { display_name: 'BasqueCloud' },
+          location: { display_name: 'Remote (EU)' },
+          description: 'Next.js TypeScript Tailwind. remote position.',
+          created: '2026-02-22T00:00:00Z',
+          redirect_url: 'https://example.com/job-4',
+        },
+        {
+          id: 'job-7',
+          title: 'Frontend Engineer',
+          company: { display_name: 'BasqueCloud' },
+          location: { display_name: 'Barcelona, Spain' },
+          description: 'React CSS Accessibility design system.',
+          created: '2026-02-19T00:00:00Z',
+          redirect_url: 'https://example.com/job-7',
+        },
+        {
+          id: 'job-10',
+          title: 'Platform Engineer',
+          company: { display_name: 'BasqueCloud' },
+          location: { display_name: 'Madrid, Spain' },
+          description: 'Go Kubernetes platform remote-first.',
+          created: '2026-02-16T00:00:00Z',
+          redirect_url: 'https://example.com/job-10',
+        },
+      ]
+
+      let filtered = allJobs
+
+      if (keyword) {
+        filtered = filtered.filter(j => j.title.toLowerCase().includes(keyword))
+      }
+
+      if (remoteOnly) {
+        filtered = filtered.filter(
+          j =>
+            j.description.toLowerCase().includes('remote') ||
+            j.location.display_name.toLowerCase().includes('remote'),
+        )
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ count: filtered.length, results: filtered }),
+      })
+    } else if (path === '/tailor') {
       const body = route.request().postDataJSON() as { cv?: Record<string, unknown> } | null
       const cv = body?.cv ?? {}
       await route.fulfill({

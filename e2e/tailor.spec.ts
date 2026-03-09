@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { clearAppStorage, clearSupabaseHistory, setupAdzunaMock, setupProxyMock } from './fixtures'
+import { clearAppStorage, clearSupabaseHistory, setupProxyMock } from './fixtures'
 
 /**
  * Tailoring flow tests.
@@ -35,8 +35,7 @@ async function createBaseCv(page: import('@playwright/test').Page) {
 
 test.describe('Inline tailoring (SearchPage)', () => {
   test.beforeEach(async ({ page }) => {
-    // Intercept Adzuna API and local proxy before navigating.
-    await setupAdzunaMock(page)
+    // Intercept local proxy before navigating.
     await setupProxyMock(page)
     // Navigate first so localStorage is accessible, then clear app keys only.
     await page.goto('/search')
@@ -68,7 +67,6 @@ test.describe('Inline tailoring (SearchPage)', () => {
     await createBaseCv(page)
 
     // Re-apply mocks after navigating away (route mocks are page-scoped)
-    await setupAdzunaMock(page)
     await setupProxyMock(page)
     await page.goto('/search')
     await expect(page.getByText(/\d+ results/)).toBeVisible({ timeout: 5000 })

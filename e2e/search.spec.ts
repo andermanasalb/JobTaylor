@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { clearAppStorage, setupAdzunaMock, setupSupabaseHistoryMock } from './fixtures'
+import { clearAppStorage, setupProxyMock, setupSupabaseHistoryMock } from './fixtures'
 
 /**
  * Search page tests — filtering, saving/unsaving jobs, job detail panel.
@@ -10,7 +10,7 @@ import { clearAppStorage, setupAdzunaMock, setupSupabaseHistoryMock } from './fi
 test.describe('Search page', () => {
   test.beforeEach(async ({ page }) => {
     // Intercept Adzuna API before navigating so no real network calls are made.
-    await setupAdzunaMock(page)
+    await setupProxyMock(page)
     // Navigate first so localStorage is accessible, then clear app keys only.
     await page.goto('/search')
     await clearAppStorage(page)
